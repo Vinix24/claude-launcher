@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# cockpit — claude-launcher CLI
+#
+# Usage:
+#   cockpit start                                 open cockpit Claude in primary terminal
+#   cockpit launch <task-id> --workspace <name> --inject "<prompt>"
+#                                                 spawn worker in workspace
+#   cockpit status                                list active workers
+#   cockpit attach <task-id>                      attach to a worker's tmux session
+#   cockpit kill <task-id>                        kill a worker (or --all)
+#   cockpit msg <type> ...                        worker-side inbox message
+#                                                 see: cockpit msg --help
+#
+# Environment:
+#   CLAUDE_LAUNCHER_HOME   override ~/.claude-launcher
+#   CLAUDE_LAUNCHER_DEBUG  set to 1 for verbose output
+
+set -euo pipefail
+
+LAUNCHER_HOME="${CLAUDE_LAUNCHER_HOME:-$HOME/.claude-launcher}"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib"
+[ -d "$LIB_DIR" ] || LIB_DIR="$LAUNCHER_HOME/lib"
+
+INBOX_DIR="$LAUNCHER_HOME/inbox"
+OUTPUT_DIR="$LAUNCHER_HOME/output"
+MANIFEST_FILE="$LAUNCHER_HOME/manifest.json"
+WORKSPACES_DIR="$LAUNCHER_HOME/workspaces"
+COCKPIT_DIR="$LAUNCHER_HOME/cockpit"
+
+ensure_dirs() {
+  mkdir -p "$INBOX_DIR" "$OUTPUT_DIR" "$WORKSPACES_DIR"
+  [ -f "$MANIFEST_FILE" ] || echo '{"workers": []}' > "$MANIFEST_FILE"
+}
+
+die() {
+  echo "cockpit: $1" >&2
+  exit "${2:-1}"
+}
+
+debug() {
+  [ "${CLAUDE_LAUNCHER_DEBUG:-0}" = "1" ] && echo "[debug] $*" >&2 || true
+}
+
+cmd_start() {
+  ensure_dirs
+
+  [ -d "$COCKPIT_DIR" ] || die "cockpit folder ontbreekt: $COCKPIT_DIR (run install.sh)"
+  command -v claude >/dev/null 2>&1 || die "claude CLI niet gevonden in PATH"
+
+  echo "cockpit: starten in $COCKPIT_DIR"
+  cd "$COCKPIT_DIR"
+  exec claude
+}
+
+cmd_launch() {
+  ensure_dirs
+
+  local task_id="" workspace="" prompt="" wait_seconds=4 skip_perms=0
+  [ $# -ge 1 ] || die "usage: cockpit launch <task-id> --workspace <name> --inject \"<prompt>\""
+  task_id="$1"; shift
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --workspace) workspace="$2"; shift 2 ;;
+      --inject)    prompt="$2"; shift 2 ;;
+      --wait)      wait_seconds="$2"; shift 2 ;;
+      --skip-permissions) skip_perms=1; shift ;;
+      *) die "onbekende optie: $1" ;;
+    esac
+  done
+
+  [ -n "$workspace" ] || die "--workspace is verplicht"
+  [ -n "$prompt" ]    || die "--inject is verplicht"
+
+  local ws_dir="$WORKSPACES_DIR/$workspace"
+  [ -d "$ws_dir" ] || die "workspace bestaat niet: $ws_dir"
+
+  if tmux has-session -t "$task_id" 2>/dev/null; then
+    die "task-id '$task_id' bestaat al. Kies een andere of: cockpit kill $task_id"
+  fi
+
+  command -v claude >/dev/null 2>&1 || die "claude CLI niet gevonden in PATH"
+  command -v tmux   >/dev/null 2>&1 || die "tmux niet geïnstalleerd"
+
+  local claude_cmd="claude"
+  [ "$skip_perms" -eq 1 ] && claude_cmd="$claude_cmd --dangerously-skip-permissions"
+
+  echo "1/4  spawn tmux '$task_id' in $ws_dir"
+  tmux new-session -d -s "$task_id" -c "$ws_dir" -x 220 -y 50
+
+  echo "2/4  exporteer CLAUDE_LAUNCHER_TASK_ID en start Claude"
+  tmux send-keys -t "$task_id" "export CLAUDE_LAUNCHER_TASK_ID=$task_id" Enter
+  tmux send-keys -t "$task_id" "export CLAUDE_LAUNCHER_HOME=$LAUNCHER_HOME" Enter
+  tmux send-keys -t "$task_id" "$claude_cmd" Enter
+
+  echo "3/4  wacht ${wait_seconds}s op Claude startup"
+  sleep "$wait_seconds"
+
+  echo "4/4  inject prompt"
+  local tmp_prompt
+  tmp_prompt="$(mktemp -t cockpit-prompt-XXXX)"
+  trap 'rm -f "$tmp_prompt"' EXIT
+  printf '%s' "$prompt" > "$tmp_prompt"
+  tmux load-buffer "$tmp_prompt"
+  tmux paste-buffer -t "$task_id"
+  sleep 0.4
+  tmux send-keys -t "$task_id" Enter
+
+  # manifest update
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$MANIFEST_FILE" "$task_id" "$workspace" <<'PY'
+import json, sys, time
+manifest, task_id, workspace = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(manifest) as f: data = json.load(f)
+data["workers"] = [w for w in data.get("workers", []) if w["task_id"] != task_id]
+data["workers"].append({
+    "task_id": task_id,
+    "workspace": workspace,
+    "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+})
+with open(manifest, "w") as f: json.dump(data, f, indent=2)
+PY
+  fi
+
+  # inbox file pre-create
+  : > "$INBOX_DIR/$task_id.ndjson"
+
+  echo "OK: worker '$task_id' draait in workspace '$workspace'"
+  echo "    attach met: cockpit attach $task_id"
+  echo "    inbox:      $INBOX_DIR/$task_id.ndjson"
+}
+
+cmd_status() {
+  ensure_dirs
+
+  if ! tmux ls 2>/dev/null | grep -q .; then
+    echo "geen actieve tmux-sessies"
+    return 0
+  fi
+
+  echo "actieve workers:"
+  printf "  %-20s  %-15s  %-25s  %s\n" "TASK-ID" "WORKSPACE" "STARTED" "INBOX"
+  if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_FILE" ]; then
+    python3 - "$MANIFEST_FILE" "$INBOX_DIR" <<'PY'
+import json, os, sys
+manifest, inbox_dir = sys.argv[1], sys.argv[2]
+with open(manifest) as f: data = json.load(f)
+for w in data.get("workers", []):
+    inbox = os.path.join(inbox_dir, w["task_id"] + ".ndjson")
+    n = 0
+    if os.path.exists(inbox):
+        with open(inbox) as fh: n = sum(1 for _ in fh)
+    print(f"  {w['task_id']:<20}  {w['workspace']:<15}  {w['started_at']:<25}  {n} events")
+PY
+  fi
+}
+
+cmd_attach() {
+  [ $# -ge 1 ] || die "usage: cockpit attach <task-id>"
+  local task_id="$1"
+  tmux has-session -t "$task_id" 2>/dev/null || die "geen sessie '$task_id'"
+  exec tmux attach -t "$task_id"
+}
+
+cmd_kill() {
+  ensure_dirs
+  [ $# -ge 1 ] || die "usage: cockpit kill <task-id> | --all"
+
+  if [ "$1" = "--all" ]; then
+    if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_FILE" ]; then
+      python3 - "$MANIFEST_FILE" <<'PY' | while read -r tid; do
+import json, sys
+with open(sys.argv[1]) as f: data = json.load(f)
+for w in data.get("workers", []): print(w["task_id"])
+PY
+        tmux kill-session -t "$tid" 2>/dev/null || true
+        echo "killed: $tid"
+      done
+      echo '{"workers": []}' > "$MANIFEST_FILE"
+    fi
+    return 0
+  fi
+
+  local task_id="$1"
+  tmux has-session -t "$task_id" 2>/dev/null && tmux kill-session -t "$task_id"
+  echo "killed: $task_id"
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$MANIFEST_FILE" "$task_id" <<'PY'
+import json, sys
+manifest, task_id = sys.argv[1], sys.argv[2]
+with open(manifest) as f: data = json.load(f)
+data["workers"] = [w for w in data.get("workers", []) if w["task_id"] != task_id]
+with open(manifest, "w") as f: json.dump(data, f, indent=2)
+PY
+  fi
+}
+
+cmd_msg() {
+  # delegate to python helper for atomic NDJSON write
+  ensure_dirs
+  local msg_script="$LIB_DIR/inbox.py"
+  [ -f "$msg_script" ] || msg_script="$LAUNCHER_HOME/lib/inbox.py"
+  [ -f "$msg_script" ] || die "inbox.py niet gevonden (verwacht in $LIB_DIR of $LAUNCHER_HOME/lib)"
+
+  CLAUDE_LAUNCHER_HOME="$LAUNCHER_HOME" exec python3 "$msg_script" "$@"
+}
+
+usage() {
+  cat <<'EOF'
+cockpit — claude-launcher CLI
+
+Commands:
+  start                                            open cockpit Claude
+  launch <task-id> --workspace <ws> --inject "<p>" spawn worker
+  status                                           list active workers
+  attach <task-id>                                 attach to worker tmux
+  kill <task-id> | --all                           kill worker(s)
+  msg <type> [options]                             worker-side inbox event
+  help                                             this message
+
+Worker-side msg commands:
+  cockpit msg status "<text>"
+  cockpit msg question "<text>" [--options "A,B,C"]
+  cockpit msg deliver <path> [--format <fmt>]
+  cockpit msg done "<summary>"
+  cockpit msg error "<text>" [--blocking]
+
+Run "cockpit msg --help" for details.
+EOF
+}
+
+main() {
+  [ $# -ge 1 ] || { usage; exit 0; }
+  local subcmd="$1"; shift || true
+
+  case "$subcmd" in
+    start)   cmd_start "$@" ;;
+    launch)  cmd_launch "$@" ;;
+    status)  cmd_status "$@" ;;
+    attach)  cmd_attach "$@" ;;
+    kill)    cmd_kill "$@" ;;
+    msg)     cmd_msg "$@" ;;
+    help|-h|--help) usage ;;
+    *) die "onbekend command: $subcmd (zie: cockpit help)" 2 ;;
+  esac
+}
+
+main "$@"
