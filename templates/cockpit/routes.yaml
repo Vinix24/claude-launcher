@@ -1,0 +1,46 @@
+# claude-launcher routing table — v0.0
+#
+# Maps natural-language intent keywords to a (workspace, skill) pair.
+# Add new entries as new skills become available.
+# Order matters when multiple routes match: pick the longest keyword-overlap.
+
+routes:
+  - intent_keywords: [blog, artikel, longform, post-blog, pillar, blogpost, blog-post]
+    workspace: marketing
+    skill: blog-writer
+    description: SEO-blog in markdown met frontmatter (600-3000 woorden)
+    output_format: markdown
+
+  - intent_keywords: [linkedin, linkedinpost, "linkedin post", carousel, "sociale post", "social media post"]
+    workspace: marketing
+    skill: linkedin-writer
+    description: LinkedIn post (text-only, carousel, of image brief)
+    output_format: markdown
+
+  - intent_keywords: [marktonderzoek, doelgroep, doelgroepanalyse, "target audience", icp, "ideale klant", kooptriggers, klantpijnen]
+    workspace: marketing
+    skill: marktonderzoeker
+    description: Doelgroepprofiel met pijnen, triggers, bezwaren
+    output_format: markdown
+
+# Cross-cutting output skills — not standalone routes, but added to an existing
+# spawn as a post-step or as a follow-up worker.
+output_skills:
+  - skill: output:docx
+    triggers: [docx, "word document", ".docx", "als word", "naar word"]
+    description: Convert generated markdown to Word
+
+  - skill: output:pptx
+    triggers: [pptx, powerpoint, "pitch deck", deck, slides, presentatie]
+    description: Convert outline to PowerPoint
+
+# Fallback behaviour when no intent_keyword matches.
+fallback:
+  action: ask_clarification
+  message: |
+    Ik kan deze instructie nog niet routeren. Welke workspace en skill bedoel je?
+    Beschikbaar in v0.0:
+      - marketing/blog-writer
+      - marketing/linkedin-writer
+      - marketing/marktonderzoeker
+    Of typ "skip" om het zelf in de cockpit af te handelen.
