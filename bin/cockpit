@@ -47,15 +47,30 @@ cmd_start() {
   [ -d "$COCKPIT_DIR" ] || die "cockpit folder ontbreekt: $COCKPIT_DIR (run install.sh)"
   command -v claude >/dev/null 2>&1 || die "claude CLI niet gevonden in PATH"
 
-  echo "cockpit: starten in $COCKPIT_DIR"
+  local require_perms=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --require-permissions) require_perms=1; shift ;;
+      *) die "onbekende optie: $1" ;;
+    esac
+  done
+
+  local claude_cmd="claude"
+  if [ "$require_perms" -eq 0 ]; then
+    claude_cmd="$claude_cmd --dangerously-skip-permissions"
+    echo "cockpit: starten in $COCKPIT_DIR (auto-approve tools: aan)"
+  else
+    echo "cockpit: starten in $COCKPIT_DIR (auto-approve tools: uit, je krijgt prompts)"
+  fi
+
   cd "$COCKPIT_DIR"
-  exec claude
+  exec $claude_cmd
 }
 
 cmd_launch() {
   ensure_dirs
 
-  local task_id="" workspace="" prompt="" wait_seconds=4 skip_perms=0
+  local task_id="" workspace="" prompt="" wait_seconds=4 require_perms=0
   [ $# -ge 1 ] || die "usage: cockpit launch <task-id> --workspace <name> --inject \"<prompt>\""
   task_id="$1"; shift
 
@@ -64,7 +79,7 @@ cmd_launch() {
       --workspace) workspace="$2"; shift 2 ;;
       --inject)    prompt="$2"; shift 2 ;;
       --wait)      wait_seconds="$2"; shift 2 ;;
-      --skip-permissions) skip_perms=1; shift ;;
+      --require-permissions) require_perms=1; shift ;;
       *) die "onbekende optie: $1" ;;
     esac
   done
@@ -83,7 +98,7 @@ cmd_launch() {
   command -v tmux   >/dev/null 2>&1 || die "tmux niet geïnstalleerd"
 
   local claude_cmd="claude"
-  [ "$skip_perms" -eq 1 ] && claude_cmd="$claude_cmd --dangerously-skip-permissions"
+  [ "$require_perms" -eq 0 ] && claude_cmd="$claude_cmd --dangerously-skip-permissions"
 
   echo "1/4  spawn tmux '$task_id' in $ws_dir"
   tmux new-session -d -s "$task_id" -c "$ws_dir" -x 220 -y 50
@@ -211,13 +226,19 @@ usage() {
 cockpit — claude-launcher CLI
 
 Commands:
-  start                                            open cockpit Claude
-  launch <task-id> --workspace <ws> --inject "<p>" spawn worker
+  start [--require-permissions]                    open cockpit Claude
+  launch <task-id> --workspace <ws> --inject "<p>"
+         [--require-permissions]                   spawn worker
   status                                           list active workers
   attach <task-id>                                 attach to worker tmux
   kill <task-id> | --all                           kill worker(s)
   msg <type> [options]                             worker-side inbox event
   help                                             this message
+
+Defaults:
+  start + launch draaien standaard met
+  --dangerously-skip-permissions (Claude vraagt geen tool-toestemming).
+  Voeg --require-permissions toe om de prompts terug te zetten.
 
 Worker-side msg commands:
   cockpit msg status "<text>"

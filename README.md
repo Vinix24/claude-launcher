@@ -35,6 +35,19 @@ Dit is **v0.0** — een leuk speeltje, geen polished product. Bewust rauwe randj
 
 `install.sh` controleert alle dependencies en biedt installatie aan via Homebrew waar mogelijk.
 
+## Auto-approve van Claude-tools
+
+`cockpit start` en `cockpit launch` draaien standaard met `claude --dangerously-skip-permissions`. Dat betekent dat Claude in de cockpit (en in de werkers) zonder tussenkomst Bash, Edit en Write mag uitvoeren. Anders moet je elke `cockpit launch`-aanroep handmatig goedkeuren, wat de hele orchestratie breekt.
+
+Wil je toch de standaard permission-prompts terug? Voeg `--require-permissions` toe:
+
+```bash
+cockpit start --require-permissions
+cockpit launch <task-id> --workspace marketing --inject "..." --require-permissions
+```
+
+Veiligheid blijft jouw verantwoordelijkheid: workers krijgen volledige filesystem-toegang binnen hun workspace. Beoordeel zelf welke skills je in je workspace toelaat.
+
 ## Installatie
 
 ```bash
