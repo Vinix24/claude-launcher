@@ -37,10 +37,9 @@ yarn-error.log*
 *.swo
 *~
 
-# Runtime / local
-~/.claude-launcher/
-output/
-inbox/
+# Runtime / local (matches only top-level, not templates/skills/output)
+/output/
+/inbox/
 *.log
 manifest.json
 
