@@ -7,6 +7,19 @@
 
 set -euo pipefail
 
+# ----- flags -----
+ASSUME_YES=0
+for arg in "$@"; do
+  case "$arg" in
+    -y|--yes) ASSUME_YES=1 ;;
+    -h|--help)
+      echo "Usage: ./install.sh [-y|--yes]"
+      echo "  --yes  ja op alles, niet-interactief (skipt ook auto-launch cockpit)"
+      exit 0
+      ;;
+  esac
+done
+
 # ----- styling -----
 if [ -t 1 ]; then
   C_GREEN=$'\033[32m'
@@ -29,6 +42,9 @@ confirm() {
   local prompt="$1"
   local default="${2:-N}"
   local answer
+  if [ "$ASSUME_YES" -eq 1 ]; then
+    return 0
+  fi
   if [ "$default" = "Y" ]; then
     read -r -p "$prompt [Y/n] " answer
     answer="${answer:-Y}"
@@ -162,72 +178,54 @@ fi
 # ----- ~/.claude-launcher tree -----
 step "Workspace-tree opzetten in $LAUNCHER_HOME"
 
-if [ -d "$LAUNCHER_HOME" ]; then
-  warn "$LAUNCHER_HOME bestaat al."
-  if confirm "Templates overschrijven? (config + output + inbox blijven behouden)" N; then
-    info "Templates worden bijgewerkt..."
-  else
-    info "Templates ongewijzigd. Skip naar smoke-test."
-    SKIP_TEMPLATES=1
-  fi
-fi
-
+# Templates worden altijd bijgewerkt (config + output + inbox blijven behouden, want
+# die zijn user-data en raken we niet aan). User draait install.sh, dus wil de update.
 mkdir -p "$LAUNCHER_HOME/inbox" "$LAUNCHER_HOME/output" "$LAUNCHER_HOME/lib"
 mkdir -p "$LAUNCHER_HOME/cockpit" "$LAUNCHER_HOME/workspaces" "$LAUNCHER_HOME/skills"
 
-if [ -z "${SKIP_TEMPLATES:-}" ]; then
-  # cockpit
-  cp -r "$REPO_DIR/templates/cockpit/." "$LAUNCHER_HOME/cockpit/"
-  ok "cockpit templates gekopieerd naar $LAUNCHER_HOME/cockpit/"
+# cockpit
+cp -r "$REPO_DIR/templates/cockpit/." "$LAUNCHER_HOME/cockpit/"
+ok "cockpit templates bijgewerkt"
 
-  # workspaces (skip _examples — die zetten we apart op via symlinks)
-  for ws_src in "$REPO_DIR/templates/workspaces"/*; do
-    ws_name="$(basename "$ws_src")"
-    [ "$ws_name" = "_examples" ] && continue
-    cp -r "$ws_src" "$LAUNCHER_HOME/workspaces/"
-  done
-  ok "workspaces gekopieerd naar $LAUNCHER_HOME/workspaces/"
+# workspaces (skip _examples — die installeren we hieronder als demo-clients)
+for ws_src in "$REPO_DIR/templates/workspaces"/*; do
+  ws_name="$(basename "$ws_src")"
+  [ "$ws_name" = "_examples" ] && continue
+  cp -r "$ws_src" "$LAUNCHER_HOME/workspaces/"
+done
+ok "workspaces bijgewerkt"
 
-  # cross-cutting output skills
-  cp -r "$REPO_DIR/templates/skills/." "$LAUNCHER_HOME/skills/"
-  ok "output skills gekopieerd naar $LAUNCHER_HOME/skills/"
+# cross-cutting output skills
+cp -r "$REPO_DIR/templates/skills/." "$LAUNCHER_HOME/skills/"
+ok "output-skills bijgewerkt"
 
-  # lib (inbox.py)
-  cp "$REPO_DIR/lib/inbox.py" "$LAUNCHER_HOME/lib/inbox.py"
-  chmod +x "$LAUNCHER_HOME/lib/inbox.py"
-  ok "lib/inbox.py geïnstalleerd"
-fi
+# lib (inbox.py)
+cp "$REPO_DIR/lib/inbox.py" "$LAUNCHER_HOME/lib/inbox.py"
+chmod +x "$LAUNCHER_HOME/lib/inbox.py"
+ok "lib/inbox.py bijgewerkt"
 
-# Demo client-workspaces (optioneel)
+# Demo client-workspaces
 step "Demo-clients (GrowthLab + Studio Atlas)"
 DEMO_SRC="$REPO_DIR/templates/workspaces/_examples/clients"
 CLIENTS_DIR="$LAUNCHER_HOME/workspaces/clients"
 
-if [ -d "$CLIENTS_DIR/growthlab" ] || [ -d "$CLIENTS_DIR/studio-atlas" ]; then
-  info "Demo-clients lijken al geïnstalleerd, skip."
-elif confirm "Twee demo-klantworkspaces installeren (GrowthLab vs Studio Atlas, zelfde-prompt-andere-output)?" Y; then
-  mkdir -p "$CLIENTS_DIR"
-  for client in growthlab studio-atlas; do
-    cp -r "$DEMO_SRC/$client" "$CLIENTS_DIR/$client"
-    # Symlink alleen blog-writer + blog-editor van de marketing-workspace
-    mkdir -p "$CLIENTS_DIR/$client/.claude/skills"
-    for skill in blog-writer blog-editor; do
-      target="$LAUNCHER_HOME/workspaces/marketing/.claude/skills/$skill"
-      if [ -d "$target" ]; then
-        ln -sfn "$target" "$CLIENTS_DIR/$client/.claude/skills/$skill"
-      fi
-    done
-    ok "$client geïnstalleerd met blog-writer + blog-editor skills"
+# Update altijd: brand-voice + rules + CLAUDE.md kunnen wijzigen, symlinks blijven
+mkdir -p "$CLIENTS_DIR"
+for client in growthlab studio-atlas; do
+  # config-bestanden: cp -R brengt updates over zonder user-edits te raken (mits
+  # user de bestanden niet zelf heeft aangepast; user-edits worden overschreven —
+  # demo-clients zijn juist bedoeld als reproducibele showcase, niet als template)
+  rsync -a --quiet "$DEMO_SRC/$client/" "$CLIENTS_DIR/$client/" 2>/dev/null || \
+    cp -r "$DEMO_SRC/$client/." "$CLIENTS_DIR/$client/"
+
+  # Symlinks blog-writer + blog-editor (idempotent met -sfn)
+  mkdir -p "$CLIENTS_DIR/$client/.claude/skills"
+  for skill in blog-writer blog-editor; do
+    target="$LAUNCHER_HOME/workspaces/marketing/.claude/skills/$skill"
+    [ -d "$target" ] && ln -sfn "$target" "$CLIENTS_DIR/$client/.claude/skills/$skill"
   done
-  echo
-  info "Demo-instructies:"
-  echo "  cockpit launch demo-growthlab --workspace clients/growthlab \\"
-  echo "    --inject \"Schrijf een blog over de toekomst van marketing\""
-  echo "  cockpit launch demo-atlas --workspace clients/studio-atlas \\"
-  echo "    --inject \"Schrijf een blog over de toekomst van marketing\""
-else
-  info "Demo-clients overgeslagen."
-fi
+done
+ok "GrowthLab + Studio Atlas bijgewerkt (blog-writer + blog-editor)"
 
 # manifest
 [ -f "$LAUNCHER_HOME/manifest.json" ] || echo '{"workers": []}' > "$LAUNCHER_HOME/manifest.json"
@@ -235,40 +233,20 @@ fi
 # ----- cockpit CLI symlink -----
 step "cockpit-CLI op het PATH"
 
-SYMLINK_DIR=""
-if confirm "Symlink 'cockpit' naar ~/.local/bin? (anders /usr/local/bin)" Y; then
-  SYMLINK_DIR="$HOME/.local/bin"
-else
-  SYMLINK_DIR="/usr/local/bin"
-fi
-
+# Default: ~/.local/bin (geen sudo, schoon). User kan dit niet kiezen — als hij /usr/local/bin
+# wil moet hij dat zelf doen of de PATH aanpassen. Eenvoud > flexibiliteit.
+SYMLINK_DIR="$HOME/.local/bin"
 mkdir -p "$SYMLINK_DIR"
 SYMLINK_PATH="$SYMLINK_DIR/cockpit"
 
-# Kopieer ook bin/cockpit naar ~/.claude-launcher/bin/ zodat het zonder repo werkt
+# Update bin/cockpit in ~/.claude-launcher/bin/ zodat het zonder repo werkt
 mkdir -p "$LAUNCHER_HOME/bin"
 cp "$REPO_DIR/bin/cockpit" "$LAUNCHER_HOME/bin/cockpit"
 chmod +x "$LAUNCHER_HOME/bin/cockpit"
 
-if [ -L "$SYMLINK_PATH" ] || [ -f "$SYMLINK_PATH" ]; then
-  warn "$SYMLINK_PATH bestaat al"
-  if confirm "Overschrijven?" Y; then
-    rm -f "$SYMLINK_PATH"
-  else
-    info "Symlink ongewijzigd."
-    SKIP_SYMLINK=1
-  fi
-fi
-
-if [ -z "${SKIP_SYMLINK:-}" ]; then
-  if [ -w "$SYMLINK_DIR" ]; then
-    ln -s "$LAUNCHER_HOME/bin/cockpit" "$SYMLINK_PATH"
-  else
-    info "Schrijf-permissie ontbreekt voor $SYMLINK_DIR, sudo nodig"
-    sudo ln -s "$LAUNCHER_HOME/bin/cockpit" "$SYMLINK_PATH"
-  fi
-  ok "cockpit -> $SYMLINK_PATH"
-fi
+# Idempotente symlink: -sfn vervangt een bestaande link/file zonder vragen
+ln -sfn "$LAUNCHER_HOME/bin/cockpit" "$SYMLINK_PATH"
+ok "cockpit -> $SYMLINK_PATH"
 
 # PATH check
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$SYMLINK_DIR"; then
@@ -336,11 +314,16 @@ echo "       \$EDITOR $LAUNCHER_HOME/workspaces/marketing/brand-voice.md"
 echo "  2. Start de cockpit:"
 echo "       cockpit start"
 echo "  3. (optioneel) zet inbox-polling aan in de cockpit:"
-echo "       /loop 60 /cockpit-monitor"
+echo "       /loop 1m /cockpit-monitor   (of laat de project-manager skill Monitor activeren)"
 echo
 echo "Documentatie: $REPO_DIR/README.md"
 echo "Probleem of bug? https://github.com/Vinix24/claude-launcher/issues"
 echo
+
+# Met --yes (CI/unattended) niet automatisch in interactive cockpit landen
+if [ "$ASSUME_YES" -eq 1 ]; then
+  exit 0
+fi
 
 if confirm "Nu de cockpit starten?" Y; then
   exec "$LAUNCHER_HOME/bin/cockpit" start
