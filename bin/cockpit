@@ -40,6 +40,55 @@ launcher_python() {
   fi
 }
 
+# Open a new terminal window that attaches to the given tmux session.
+# Tries iTerm, then Terminal.app, then falls back to printing instructions.
+open_terminal_attached() {
+  local task_id="$1"
+  local term_program="${TERM_PROGRAM:-}"
+
+  # Determine target app
+  local target=""
+  case "$term_program" in
+    iTerm.app)        target="iTerm" ;;
+    Apple_Terminal)   target="Terminal" ;;
+    *)
+      # Fallback: try iTerm first if installed, then Terminal
+      if [ -d "/Applications/iTerm.app" ]; then
+        target="iTerm"
+      else
+        target="Terminal"
+      fi
+      ;;
+  esac
+
+  local attach_cmd="tmux attach -t $task_id"
+
+  if [ "$target" = "iTerm" ]; then
+    osascript <<EOF >/dev/null 2>&1 || return 1
+tell application "iTerm"
+  activate
+  create window with default profile
+  tell current session of current window
+    write text "$attach_cmd"
+  end tell
+end tell
+EOF
+    return 0
+  fi
+
+  if [ "$target" = "Terminal" ]; then
+    osascript <<EOF >/dev/null 2>&1 || return 1
+tell application "Terminal"
+  activate
+  do script "$attach_cmd"
+end tell
+EOF
+    return 0
+  fi
+
+  return 1
+}
+
 ensure_dirs() {
   mkdir -p "$INBOX_DIR" "$OUTPUT_DIR" "$WORKSPACES_DIR"
   [ -f "$MANIFEST_FILE" ] || echo '{"workers": []}' > "$MANIFEST_FILE"
@@ -83,7 +132,7 @@ cmd_start() {
 cmd_launch() {
   ensure_dirs
 
-  local task_id="" workspace="" prompt="" wait_seconds=4 require_perms=0
+  local task_id="" workspace="" prompt="" wait_seconds=4 require_perms=0 headless=0
   [ $# -ge 1 ] || die "usage: cockpit launch <task-id> --workspace <name> --inject \"<prompt>\""
   task_id="$1"; shift
 
@@ -93,6 +142,7 @@ cmd_launch() {
       --inject)    prompt="$2"; shift 2 ;;
       --wait)      wait_seconds="$2"; shift 2 ;;
       --require-permissions) require_perms=1; shift ;;
+      --headless) headless=1; shift ;;
       *) die "onbekende optie: $1" ;;
     esac
   done
@@ -132,12 +182,12 @@ cmd_launch() {
   echo "4/4  inject prompt"
   local tmp_prompt
   tmp_prompt="$(mktemp -t cockpit-prompt-XXXX)"
-  trap 'rm -f "$tmp_prompt"' EXIT
   printf '%s' "$prompt" > "$tmp_prompt"
   tmux load-buffer "$tmp_prompt"
   tmux paste-buffer -t "$task_id"
   sleep 0.4
   tmux send-keys -t "$task_id" Enter
+  rm -f "$tmp_prompt"
 
   # manifest update
   if command -v python3 >/dev/null 2>&1; then
@@ -159,8 +209,18 @@ PY
   : > "$INBOX_DIR/$task_id.ndjson"
 
   echo "OK: worker '$task_id' draait in workspace '$workspace'"
-  echo "    attach met: cockpit attach $task_id"
-  echo "    inbox:      $INBOX_DIR/$task_id.ndjson"
+  echo "    inbox: $INBOX_DIR/$task_id.ndjson"
+
+  # Visible launch: open a new terminal window attached to the worker
+  if [ "$headless" -eq 0 ]; then
+    if open_terminal_attached "$task_id"; then
+      echo "    venster geopend en attached"
+    else
+      echo "    visible open faalde, attach handmatig: cockpit attach $task_id"
+    fi
+  else
+    echo "    headless, attach handmatig: cockpit attach $task_id"
+  fi
 }
 
 cmd_status() {
@@ -249,7 +309,7 @@ cockpit — claude-launcher CLI
 Commands:
   start [--require-permissions]                    open cockpit Claude
   launch <task-id> --workspace <ws> --inject "<p>"
-         [--require-permissions]                   spawn worker
+         [--require-permissions] [--headless]      spawn worker
   status                                           list active workers
   attach <task-id>                                 attach to worker tmux
   kill <task-id> | --all                           kill worker(s)
@@ -260,6 +320,10 @@ Defaults:
   start + launch draaien standaard met
   --dangerously-skip-permissions (Claude vraagt geen tool-toestemming).
   Voeg --require-permissions toe om de prompts terug te zetten.
+
+  launch opent standaard een nieuw iTerm/Terminal-window met de worker
+  in beeld. Voeg --headless toe als je de worker onzichtbaar in tmux
+  wilt laten draaien (attach later met 'cockpit attach <task-id>').
 
 Worker-side msg commands:
   cockpit msg status "<text>"
