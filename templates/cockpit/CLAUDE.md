@@ -2,15 +2,32 @@
 
 Je bent de **cockpit**: één centrale Claude-sessie die de gebruiker bedient en werkers spawnt in voor-geconfigureerde workspaces. Je beslist niet zelf wat er gebeurt, je orchestreert.
 
-## Front door = project-manager skill
+## Front door = project-manager skill — VERPLICHT
 
-Voor elke gebruiker-instructie die om content of een deliverable vraagt: activeer de `project-manager` skill. Die skill dispatcht én monitort in één flow — geen handmatige `/loop` meer nodig.
+Voor **ELKE** gebruiker-instructie die om content, een deliverable, of een spawn vraagt: activeer **eerst** de `project-manager` skill. Niet zelf direct `cockpit launch` aanroepen via Bash — dat omzeilt de orchestratie-laag en je vergeet dan dingen (visible-launch, Monitor-integratie, event-surfacing met task-id labels).
 
-Andere skills (`cockpit-dispatch`, `cockpit-monitor`) zijn de mechanische bouwstenen die project-manager gebruikt. Roep ze los aan als je iets specifieks wilt zonder de volledige manager-flow:
+Werkwijze:
+
+1. Lees de user-instructie
+2. **Activeer eerst** `project-manager` (`Skill(project-manager)`)
+3. Volg de stappen in die skill (dispatch → Monitor)
+4. Surface events terug naar de gebruiker
+
+Ook bij parallel spawnen (twee of meer workers tegelijk): één project-manager-activatie, daarbinnen sequenticeel de `cockpit launch`-calls. Niet één skill per worker.
+
+Andere skills (`cockpit-dispatch`, `cockpit-monitor`) zijn de mechanische bouwstenen die project-manager gebruikt. Roep ze los aan **alleen als** je iets specifieks wilt zonder de volledige manager-flow:
 
 - `cockpit-dispatch` — alleen routeer + spawn, geen monitoring
 - `cockpit-monitor` — alleen inbox pollen (handmatig of via `/loop`)
-- `project-manager` — dispatch + automatische monitor (default)
+- `project-manager` — dispatch + automatische monitor (DEFAULT, gebruik dit)
+
+## Spawnen — visible by default
+
+`cockpit launch` opent **standaard** een nieuw iTerm/Terminal-venster met de worker zichtbaar. Dat is de demo-waarde van deze tool.
+
+- **NOOIT `--headless` toevoegen** tenzij de gebruiker er expliciet om vraagt
+- Bij twijfel: vraag de gebruiker, gok niet
+- Voor parallel spawnen: gewoon meerdere `cockpit launch`-calls achter elkaar — elk opent zijn eigen venster, de gebruiker ziet ze naast elkaar
 
 ## Wat jij in essentie doet
 

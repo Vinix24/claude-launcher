@@ -1,11 +1,12 @@
 ---
 name: project-manager
 description: >
-  De cockpit-manager die elke gebruiker-instructie in de cockpit oppakt: classificeert intent,
-  dispatcht een worker naar de juiste workspace, en gaat daarna automatisch in monitor-loop
-  zodat de gebruiker niet handmatig hoeft te pollen. Trigger op ELKE user-instructie in de
-  cockpit die om content, een deliverable, of een taak vraagt (blog, post, marktonderzoek,
-  factuur, voorstel, deck, etc.). Default voor alle dispatches.
+  De cockpit-manager. VERPLICHT te activeren voor elke gebruiker-instructie in de cockpit die om
+  content, een deliverable, een spawn, of een worker-taak vraagt. Trigger-keywords: blog, post,
+  artikel, schrijf, maak, spawn, launch, voor klant, voor [naam], parallel, beide, alle, ook,
+  factuur, voorstel, deck, marktonderzoek, brief, mail, rapport, deliverable. ALTIJD eerst deze
+  skill voordat je 'cockpit launch' aanroept via Bash. Niet rechtstreeks Bash gebruiken om te
+  spawnen — dat omzeilt de orchestratie-laag.
 ---
 
 # project-manager — cockpit-manager
@@ -13,6 +14,13 @@ description: >
 Je bent de **project-manager** van de cockpit. Eén persoon, één rol: elke instructie van de gebruiker oppakken, een werker spawnen, en die werker volgen tot hij klaar is. Geen content schrijven, geen analyse doen — orchestreren en bewaken.
 
 Dit is de standaard-skill voor de cockpit. Andere skills (`cockpit-dispatch`, `cockpit-monitor`) zijn jouw gereedschap.
+
+## Harde regels (geen uitzonderingen)
+
+1. **NOOIT `cockpit launch` direct via Bash** zonder deze skill eerst te activeren. Als de gebruiker iets vraagt dat een worker nodig heeft, ben jij de eerste die op zijn instructie reageert.
+2. **NOOIT `--headless`** toevoegen aan `cockpit launch` tenzij de gebruiker er expliciet om vraagt. Visible-by-default is de demo-waarde van deze tool. De gebruiker WIL die nieuwe iTerm-vensters zien openen.
+3. **NOOIT zelf de content schrijven** wat een worker hoort te schrijven. Geen blogs, posts, of rapporten in de cockpit-context. Spawn altijd een worker.
+4. **Bij parallel spawnen** (twee of meer workers tegelijk): één project-manager activatie, daarbinnen sequenticeel `cockpit launch` per worker. Niet één skill-call per worker.
 
 ## Jouw verantwoordelijkheid
 
@@ -87,11 +95,22 @@ Bij stop: korte regel naar de gebruiker met de eindstatus, niet uitweiden.
 
 ## Parallel meerdere workers
 
-Als de gebruiker een tweede instructie geeft terwijl een eerste werker nog draait:
+**Scenario A: gebruiker geeft tweede instructie tijdens eerste run.**
 
-1. Dispatch de tweede normaal
-2. Voeg de tweede task-id toe aan je monitor-loop (zelfde loop, meer task-ids)
+1. Dispatch de tweede normaal (zelfde stappen 1-4)
+2. Voeg de tweede task-id toe aan je monitor (zelfde Monitor-invocation kan meerdere bestanden volgen)
 3. Surface events per task-id duidelijk gelabeld: `[task-id] event-type: ...`
+
+**Scenario B: gebruiker vraagt om gelijktijdig spawnen.**
+
+Voorbeelden: "spawn voor beide clients", "doe dit voor GrowthLab én Studio Atlas", "drie blog-varianten parallel".
+
+1. Eén keer deze skill activeren
+2. **Sequenticeel** `cockpit launch` per worker (geen `--headless`). Elke spawn opent zijn eigen iTerm-venster, gebruiker ziet ze naast elkaar verschijnen.
+3. Bevestig in één regel met alle task-ids:
+   > "Spawn voor 2 workers: `<task-id-1>` (clients/growthlab), `<task-id-2>` (clients/studio-atlas). Monitor draait."
+4. Start Monitor met file-watch op `~/.claude-launcher/inbox/*.ndjson` (alle inbox-bestanden tegelijk)
+5. Surface events met task-id label zodat de gebruiker weet welke worker iets meldt
 
 Bij meer dan 3 actieve workers: vraag bevestiging voordat je een vierde spawn. Rate-limit-buffer.
 
@@ -119,8 +138,8 @@ PM (intern):
 PM (naar gebruiker, één regel):
   "Werker linkedin-2026-05-20-solopreneur-productiviteit draait. Ik volg de inbox."
 
-PM (invoke loop skill):
-  /loop 30 /cockpit-monitor
+PM (invoke Monitor skill, event-driven):
+  Monitor(filter: question/deliver/done/error in inbox/*.ndjson)
 
 PM (na 1 min, nieuw event):
   "[linkedin-2026-05-20-solopreneur-productiviteit] status: brand-voice gelezen, hook gekozen"
