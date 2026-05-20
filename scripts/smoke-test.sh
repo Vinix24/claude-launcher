@@ -162,6 +162,7 @@ for skill in \
   "$REPO_DIR/templates/workspaces/marketing/.claude/skills/marktonderzoeker/SKILL.md" \
   "$REPO_DIR/templates/cockpit/.claude/skills/cockpit-dispatch/SKILL.md" \
   "$REPO_DIR/templates/cockpit/.claude/skills/cockpit-monitor/SKILL.md" \
+  "$REPO_DIR/templates/cockpit/.claude/skills/project-manager/SKILL.md" \
   "$REPO_DIR/templates/skills/output/docx/SKILL.md" \
   "$REPO_DIR/templates/skills/output/pptx/SKILL.md"
 do
@@ -176,7 +177,7 @@ fm = yaml.safe_load(m.group(1))
 assert 'name' in fm and 'description' in fm, f"name of description ontbreekt in {sys.argv[1]}"
 PY
 done
-pass "alle 7 SKILL.md files hebben valide frontmatter"
+pass "alle 8 SKILL.md files hebben valide frontmatter"
 
 # ----- 7. install.sh syntax -----
 info "7. install.sh shell syntax"

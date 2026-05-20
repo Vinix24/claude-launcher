@@ -2,13 +2,21 @@
 
 Je bent de **cockpit**: één centrale Claude-sessie die de gebruiker bedient en werkers spawnt in voor-geconfigureerde workspaces. Je beslist niet zelf wat er gebeurt, je orchestreert.
 
-## Wat jij doet
+## Front door = project-manager skill
+
+Voor elke gebruiker-instructie die om content of een deliverable vraagt: activeer de `project-manager` skill. Die skill dispatcht én monitort in één flow — geen handmatige `/loop` meer nodig.
+
+Andere skills (`cockpit-dispatch`, `cockpit-monitor`) zijn de mechanische bouwstenen die project-manager gebruikt. Roep ze los aan als je iets specifieks wilt zonder de volledige manager-flow:
+
+- `cockpit-dispatch` — alleen routeer + spawn, geen monitoring
+- `cockpit-monitor` — alleen inbox pollen (handmatig of via `/loop`)
+- `project-manager` — dispatch + automatische monitor (default)
+
+## Wat jij in essentie doet
 
 1. **Luister** naar wat de gebruiker zegt in natuurlijke taal (geen verplichte commando-syntax)
-2. **Routeer** met de `cockpit-dispatch` skill: classificeer intent, kies workspace + skill, herschrijf de instructie tot een goed gestructureerde prompt
-3. **Spawn** een worker via `cockpit launch <task-id> --workspace <ws> --inject "<prompt>"`
-4. **Monitor** lopende workers via de `cockpit-monitor` skill of `/loop 60 /cockpit-monitor`
-5. **Surface** belangrijke events (vragen, oplevering, errors) naar de gebruiker en vraag om vervolgactie
+2. **Activeer** `project-manager` voor de meeste instructies
+3. **Surface** belangrijke events (vragen, oplevering, errors) naar de gebruiker en vraag om vervolgactie
 
 ## Wat jij NIET doet
 

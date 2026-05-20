@@ -19,21 +19,22 @@ Twee redenen.
 
 ---
 
-## 2. Positionering — "leuk speeltje", niet enterprise
+## 2. Positionering — "werkend prototype", niet enterprise
 
 Belangrijke set-the-bar move: dit is **bewust** geen polished product.
 
 | Wat het IS | Wat het NIET is |
 |---|---|
-| Leuk speeltje voor power-users | Enterprise-tool |
+| Werkend prototype voor power-users | Enterprise-tool |
 | Bash + Python + tmux | Electron-app of SaaS |
 | MIT, lokaal, geen telemetry | Subscription of freemium |
 | Mag rauwe randjes hebben | Bug-vrije productie-software |
 | Living roadmap met community-input | Vastgepind feature-overzicht |
+| De voorganger van VNX Orchestration | De productie-versie (dat is VNX) |
 
 Door dit expliciet zo te framen in de eerste post, zet ik verwachtingen. Mensen die "het werkt niet voor X" reageren ben ik niet bang voor, dat is precies de **engagement** die ik wil. Die comments zijn mijn roadmap.
 
-Voorbeeld-zin voor de post: *"Werkt het al perfect? Nee. Is het leuk genoeg om mee te spelen? Ja. Vertel me wat jij er nog in wil zien."*
+Voorbeeld-zin voor de post: *"Dit is hoe VNX Orchestration ooit begon. Lichter, kleiner, geen governance-overhead. Vertel me wat jij er nog in wil zien."*
 
 ---
 
@@ -43,7 +44,7 @@ claude-launcher is de poort. Drie lagen:
 
 ```
 LAYER 1 — claude-launcher (giveaway)
-  Gratis, MIT, "leuk speeltje", lage drempel
+  Gratis, MIT, prototype-niveau, lage drempel
   Doel: traffic + naamsbekendheid
         ↓ wie wil meer
 LAYER 2 — VNX Orchestration
@@ -112,7 +113,7 @@ Niet één post maar een **serie van 4-6 posts** over 3-4 weken. Dat houdt het a
 ### Post 4 — De grote broer (week 3)
 
 **Hook**:
-*"claude-launcher is het speeltje. VNX Orchestration is het werkpaard."*
+*"claude-launcher is de voorganger. VNX Orchestration is het werkpaard."*
 
 **Body**:
 - Verschil tussen exploration en productie
@@ -185,33 +186,37 @@ Strikte toepassing van mijn voice-profile (`~/.claude/rules/voice-profile.md` + 
 Vijf experts in mijn cockpit. Eén instructie volstaat.
 
 Ik typ "schrijf een blog over AI-impact op MKB-marketing" en
-mijn cockpit doet de rest. Hij kiest het juiste skill-pakket
-(marketing-workspace), herschrijft mijn zin tot een goed
-gestructureerde prompt, opent een nieuwe Claude-sessie in een
-voor-geconfigureerde folder, en rapporteert terug zodra de
-blog klaar is.
+mijn cockpit doet de rest. Hij kiest het juiste skill-pakket,
+herschrijft mijn zin tot een gestructureerde prompt, opent een
+nieuwe Claude-sessie in een voor-geconfigureerde folder, en
+rapporteert terug zodra de blog klaar is.
 
 Geen copy-paste tussen tabs. Geen brand-voice opnieuw uitleggen.
-Geen prompt-engineering-werk meer in mijn hoofd.
 
-Vandaag open source op GitHub: claude-launcher.
+Zo begon VNX Orchestration ooit. Een handvol bash-scripts die
+Claude-sessies opspawnden in tmux-windows. Inmiddels is VNX een
+governance-first runtime voor productie-werk, maar de oer-vorm
+zat al in die scripts.
+
+Die oer-vorm heb ik nu opgepoetst en open source gezet:
+claude-launcher. De lichte voorganger, zonder de governance-
+overhead. Voor solopreneurs en marketeers die geen 1.100+
+receipts per week nodig hebben, maar wel sneller af willen zijn.
 
 Wat het wel doet:
-- Spawnt parallelle Claude Code-sessies in marketing-, sales-,
-  finance-workspaces
+- Spawnt parallelle Claude Code-sessies in workspaces
 - Routeert jouw natuurlijke instructie naar de juiste skill
-- Genereert blogs, LinkedIn-posts, facturen, pitch-decks (pptx)
+- Genereert blogs, LinkedIn-posts, marktonderzoek, pitch-decks
 - Volledig lokaal, MIT-license, geen cloud, geen telemetry
 
 Wat het NIET doet:
-- Geen enterprise-SSO, geen audit-trail (zie VNX Orchestration
-  als je dat nodig hebt, link in comments)
-- Geen perfectie. Dit is een leuk speeltje, geen productie-tool.
-- Werkt nog niet op Windows. Mac alleen, voorlopig.
+- Geen enterprise-SSO, geen audit-trail (kijk naar VNX als je
+  dat nodig hebt, link in comments)
+- Geen perfectie. Dit is een werkend prototype, geen productie-tool
+- Werkt nog niet op Windows. Mac alleen, voorlopig
 
 Vertel me in de comments: wat zou jij er nog in willen zien?
-Komende weken bouw ik de top-wishes uit en kom ik terug met
-updates.
+Komende weken bouw ik de top-wishes uit.
 
 → github.com/Vinix24/claude-launcher
 

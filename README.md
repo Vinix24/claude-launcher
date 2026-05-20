@@ -8,7 +8,15 @@ Geen copy-paste tussen tabs. Geen brand-voice opnieuw uitleggen. Geen prompt-eng
 
 ## Status
 
-Dit is **v0.0** — een leuk speeltje, geen polished product. Bewust rauwe randjes, bewust open source, bewust local-first. Mac-only voor nu.
+Dit is **v0.0** — een werkend prototype, geen polished product. Bewust rauwe randjes, bewust open source, bewust local-first. Mac-only voor nu.
+
+## Hoe dit ontstaan is
+
+claude-launcher is de oer-vorm van mijn eigen orchestratie-werk. Ik begon ooit met een handvol bash-scripts die Claude-sessies opspawnden in tmux-windows, zodat ik niet meer tussen browser-tabs hoefde te switchen. Die scripts groeiden uit tot iets serieus: [VNX Orchestration](https://github.com/Vinix24/vnx-orchestration), mijn governance-first runtime voor multi-agent productie-werk met audit-trail, SPC-grade quality gates, en NDJSON receipts.
+
+VNX is het werkpaard. claude-launcher is de lichte voorganger: dezelfde mentale model (cockpit + workers + inbox), zonder de governance-overhead. Bedoeld voor solopreneurs, marketeers en kenniswerkers die geen 1.100+ receipts per week nodig hebben.
+
+Als je serieuze productie-orchestratie wilt, kijk naar VNX. Als je gewoon wilt dat je content sneller af is zonder tabs-tetris, dit is je tool.
 
 ## Wat het wel doet
 
@@ -21,7 +29,7 @@ Dit is **v0.0** — een leuk speeltje, geen polished product. Bewust rauwe randj
 ## Wat het NIET doet
 
 - Geen enterprise-SSO, geen audit-trail. Kijk naar [VNX Orchestration](https://github.com/Vinix24/vnx-orchestration) als je dat nodig hebt.
-- Geen perfectie. Dit is een leuk speeltje, geen productie-tool.
+- Geen perfectie. Dit is een prototype, geen productie-tool. Voor governance-grade orchestratie: zie VNX.
 - Werkt nog niet op Windows. Mac alleen, voorlopig.
 - Geen finance-, sales-, of operations-workspaces in v0.0. Die komen in v0.5+.
 
