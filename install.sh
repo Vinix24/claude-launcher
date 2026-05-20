@@ -305,3 +305,8 @@ echo "       /loop 60 /cockpit-monitor"
 echo
 echo "Documentatie: $REPO_DIR/README.md"
 echo "Probleem of bug? https://github.com/Vinix24/claude-launcher/issues"
+echo
+
+if confirm "Nu de cockpit starten?" Y; then
+  exec "$LAUNCHER_HOME/bin/cockpit" start
+fi
