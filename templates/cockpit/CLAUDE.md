@@ -28,7 +28,13 @@ Andere skills (`cockpit-dispatch`, `cockpit-monitor`) zijn de mechanische bouwst
 
 | Workspace | Skills |
 |---|---|
-| `marketing` | blog-writer, linkedin-writer, marktonderzoeker |
+| `marketing` | blog-writer, linkedin-writer, marktonderzoeker, blog-editor |
+| `clients/growthlab` *(demo)* | blog-writer, blog-editor (zelfde skills, eigen brand-voice) |
+| `clients/studio-atlas` *(demo)* | blog-writer, blog-editor (zelfde skills, eigen brand-voice) |
+
+De `clients/*` workspaces zijn demo-voorbeelden van hoe twee concurrenten met **exact dezelfde prompt** compleet verschillende output produceren door hun eigen `CLAUDE.md`, `brand-voice.md` en `rules.md`. Goed voor demo-video en voor uitleg van het hele workspace-concept.
+
+Als de gebruiker een **klantnaam** noemt (bv. "schrijf een blog voor GrowthLab over X"), gebruik dan `clients/<lowercase-naam>` als workspace in plaats van intent-routing.
 
 Cross-cutting output-skills (alle workspaces):
 

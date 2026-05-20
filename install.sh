@@ -180,8 +180,12 @@ if [ -z "${SKIP_TEMPLATES:-}" ]; then
   cp -r "$REPO_DIR/templates/cockpit/." "$LAUNCHER_HOME/cockpit/"
   ok "cockpit templates gekopieerd naar $LAUNCHER_HOME/cockpit/"
 
-  # workspaces
-  cp -r "$REPO_DIR/templates/workspaces/." "$LAUNCHER_HOME/workspaces/"
+  # workspaces (skip _examples — die zetten we apart op via symlinks)
+  for ws_src in "$REPO_DIR/templates/workspaces"/*; do
+    ws_name="$(basename "$ws_src")"
+    [ "$ws_name" = "_examples" ] && continue
+    cp -r "$ws_src" "$LAUNCHER_HOME/workspaces/"
+  done
   ok "workspaces gekopieerd naar $LAUNCHER_HOME/workspaces/"
 
   # cross-cutting output skills
@@ -192,6 +196,37 @@ if [ -z "${SKIP_TEMPLATES:-}" ]; then
   cp "$REPO_DIR/lib/inbox.py" "$LAUNCHER_HOME/lib/inbox.py"
   chmod +x "$LAUNCHER_HOME/lib/inbox.py"
   ok "lib/inbox.py geïnstalleerd"
+fi
+
+# Demo client-workspaces (optioneel)
+step "Demo-clients (GrowthLab + Studio Atlas)"
+DEMO_SRC="$REPO_DIR/templates/workspaces/_examples/clients"
+CLIENTS_DIR="$LAUNCHER_HOME/workspaces/clients"
+
+if [ -d "$CLIENTS_DIR/growthlab" ] || [ -d "$CLIENTS_DIR/studio-atlas" ]; then
+  info "Demo-clients lijken al geïnstalleerd, skip."
+elif confirm "Twee demo-klantworkspaces installeren (GrowthLab vs Studio Atlas, zelfde-prompt-andere-output)?" Y; then
+  mkdir -p "$CLIENTS_DIR"
+  for client in growthlab studio-atlas; do
+    cp -r "$DEMO_SRC/$client" "$CLIENTS_DIR/$client"
+    # Symlink alleen blog-writer + blog-editor van de marketing-workspace
+    mkdir -p "$CLIENTS_DIR/$client/.claude/skills"
+    for skill in blog-writer blog-editor; do
+      target="$LAUNCHER_HOME/workspaces/marketing/.claude/skills/$skill"
+      if [ -d "$target" ]; then
+        ln -sfn "$target" "$CLIENTS_DIR/$client/.claude/skills/$skill"
+      fi
+    done
+    ok "$client geïnstalleerd met blog-writer + blog-editor skills"
+  done
+  echo
+  info "Demo-instructies:"
+  echo "  cockpit launch demo-growthlab --workspace clients/growthlab \\"
+  echo "    --inject \"Schrijf een blog over de toekomst van marketing\""
+  echo "  cockpit launch demo-atlas --workspace clients/studio-atlas \\"
+  echo "    --inject \"Schrijf een blog over de toekomst van marketing\""
+else
+  info "Demo-clients overgeslagen."
 fi
 
 # manifest
