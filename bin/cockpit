@@ -26,6 +26,19 @@ OUTPUT_DIR="$LAUNCHER_HOME/output"
 MANIFEST_FILE="$LAUNCHER_HOME/manifest.json"
 WORKSPACES_DIR="$LAUNCHER_HOME/workspaces"
 COCKPIT_DIR="$LAUNCHER_HOME/cockpit"
+VENV_BIN_DIR="$LAUNCHER_HOME/.venv/bin"
+
+# Resolve which python to use. Prefer the launcher venv (with python-docx,
+# python-pptx, pyyaml installed by install.sh), else fall back to system python3.
+launcher_python() {
+  if [ -x "$VENV_BIN_DIR/python3" ]; then
+    echo "$VENV_BIN_DIR/python3"
+  elif command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+  else
+    echo ""
+  fi
+}
 
 ensure_dirs() {
   mkdir -p "$INBOX_DIR" "$OUTPUT_DIR" "$WORKSPACES_DIR"
@@ -106,6 +119,11 @@ cmd_launch() {
   echo "2/4  exporteer CLAUDE_LAUNCHER_TASK_ID en start Claude"
   tmux send-keys -t "$task_id" "export CLAUDE_LAUNCHER_TASK_ID=$task_id" Enter
   tmux send-keys -t "$task_id" "export CLAUDE_LAUNCHER_HOME=$LAUNCHER_HOME" Enter
+  # zet de launcher-venv vooraan in PATH zodat 'python3' inside de werker
+  # automatisch python-docx, python-pptx en pyyaml ziet
+  if [ -d "$VENV_BIN_DIR" ]; then
+    tmux send-keys -t "$task_id" "export PATH=\"$VENV_BIN_DIR:\$PATH\"" Enter
+  fi
   tmux send-keys -t "$task_id" "$claude_cmd" Enter
 
   echo "3/4  wacht ${wait_seconds}s op Claude startup"
@@ -218,7 +236,10 @@ cmd_msg() {
   [ -f "$msg_script" ] || msg_script="$LAUNCHER_HOME/lib/inbox.py"
   [ -f "$msg_script" ] || die "inbox.py niet gevonden (verwacht in $LIB_DIR of $LAUNCHER_HOME/lib)"
 
-  CLAUDE_LAUNCHER_HOME="$LAUNCHER_HOME" exec python3 "$msg_script" "$@"
+  local py
+  py="$(launcher_python)"
+  [ -n "$py" ] || die "geen python3 gevonden"
+  CLAUDE_LAUNCHER_HOME="$LAUNCHER_HOME" exec "$py" "$msg_script" "$@"
 }
 
 usage() {

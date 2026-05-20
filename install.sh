@@ -99,8 +99,25 @@ else
   fi
 fi
 
-# Python packages
-step "Python packages: python-docx, python-pptx, pyyaml"
+# Python packages — install in een dedicated venv onder $LAUNCHER_HOME/.venv
+# om PEP 668 ("externally-managed-environment") op moderne Homebrew te omzeilen
+step "Python packages in venv: python-docx, python-pptx, pyyaml"
+
+VENV_DIR="$LAUNCHER_HOME/.venv"
+mkdir -p "$LAUNCHER_HOME"
+
+if [ ! -x "$VENV_DIR/bin/python3" ]; then
+  info "Venv aanmaken in $VENV_DIR..."
+  "$PYTHON_BIN" -m venv "$VENV_DIR" || {
+    err "venv aanmaken faalde. Heeft je Python 'venv' module? Probeer: $PYTHON_BIN -m ensurepip"
+    exit 1
+  }
+  ok "venv aangemaakt: $VENV_DIR"
+fi
+
+VENV_PY="$VENV_DIR/bin/python3"
+
+# Welke packages ontbreken in de venv?
 MISSING_PKGS=()
 for pkg in docx pptx yaml; do
   case "$pkg" in
@@ -108,26 +125,27 @@ for pkg in docx pptx yaml; do
     pptx)  module="pptx";  install="python-pptx" ;;
     yaml)  module="yaml";  install="pyyaml" ;;
   esac
-  if "$PYTHON_BIN" -c "import $module" 2>/dev/null; then
-    ok "$install"
+  if "$VENV_PY" -c "import $module" 2>/dev/null; then
+    ok "$install (venv)"
   else
     MISSING_PKGS+=("$install")
   fi
 done
 
 if [ "${#MISSING_PKGS[@]}" -gt 0 ]; then
-  warn "Ontbrekende packages: ${MISSING_PKGS[*]}"
-  if confirm "Installeren via 'pip3 install --user ${MISSING_PKGS[*]}'?" Y; then
-    "$PYTHON_BIN" -m pip install --user "${MISSING_PKGS[@]}" || {
-      err "pip install faalde. Installeer handmatig: pip3 install --user ${MISSING_PKGS[*]}"
-      exit 1
-    }
-    ok "packages geïnstalleerd"
-  else
-    err "Python packages zijn verplicht voor de output-skills. Installatie afgebroken."
+  info "Installeren in venv: ${MISSING_PKGS[*]}"
+  "$VENV_PY" -m pip install --quiet --upgrade pip || true
+  "$VENV_PY" -m pip install --quiet "${MISSING_PKGS[@]}" || {
+    err "pip install in venv faalde."
+    echo "  Handmatige fix:"
+    echo "    $VENV_PY -m pip install ${MISSING_PKGS[*]}"
     exit 1
-  fi
+  }
+  ok "packages geïnstalleerd in venv"
 fi
+
+# Sla het venv-python-pad op zodat bin/cockpit het kan vinden
+echo "$VENV_PY" > "$LAUNCHER_HOME/.venv-python"
 
 # claude CLI
 step "Claude Code CLI"
@@ -259,7 +277,7 @@ Een **test** document.
 - bullet 1
 - bullet 2
 EOF
-"$PYTHON_BIN" "$LAUNCHER_HOME/skills/output/docx/scripts/md2docx.py" "$TEST_MD" "$TEST_DOCX" >/dev/null
+"$VENV_PY" "$LAUNCHER_HOME/skills/output/docx/scripts/md2docx.py" "$TEST_MD" "$TEST_DOCX" >/dev/null
 if [ -f "$TEST_DOCX" ]; then
   ok "md2docx werkt ($(wc -c < "$TEST_DOCX" | tr -d ' ') bytes)"
   rm "$TEST_MD" "$TEST_DOCX"
