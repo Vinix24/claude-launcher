@@ -43,12 +43,22 @@ Eén zin, geen lange uitleg:
 
 ### 3. Automatische monitor-loop
 
-Direct na dispatch (geen wachten op de gebruiker):
+Direct na dispatch (geen wachten op de gebruiker). Drie routes, in volgorde van voorkeur:
 
-- **Optie A (aanbevolen)**: invoke de `loop` skill met interval 30s en commando `/cockpit-monitor`. Dat geeft een echte recurring poll die zelfs blijft draaien als de gebruiker even iets anders doet.
-- **Optie B (fallback)**: voer zelf de polling-stappen uit binnen je huidige turn met `bash` (`sleep 30 && cat ~/.claude-launcher/inbox/<task-id>.ndjson | tail -n +<seen-count>`) tot er een `done` of `error --blocking` is. Geef daarna controle terug aan de gebruiker.
+- **Optie A (aanbevolen): Monitor skill.** Invoke de `Monitor` skill met file-watch op `~/.claude-launcher/inbox/<task-id>.ndjson` (of `~/.claude-launcher/inbox/*.ndjson` als meerdere workers draaien). Filter op events van type `question`, `deliver`, `done`, of `error`. Dit is **event-driven**: je wordt direct getriggerd op een nieuwe regel, geen polling-cycles, geen cache-misses.
 
-Default = optie A. Schakel naar B als `/loop` om de een of andere reden niet beschikbaar is.
+- **Optie B (cron-loop): /loop met EXPLICIETE tijdseenheid.** Als Monitor niet beschikbaar is, invoke `/loop 1m /cockpit-monitor` (een minuut). **NOOIT `/loop 30` zonder unit** — dat valt terug naar dynamic mode. Geldige units: `30s`, `1m`, `2m`, `5m`. Default 1m voor blog-werk, 30s voor korte taken.
+
+- **Optie C (in-turn polling): bash-sleep loop.** Laatste fallback. Voer zelf polling uit binnen je huidige turn:
+  ```bash
+  for i in $(seq 1 20); do
+    sleep 30
+    tail -n +"$seen" ~/.claude-launcher/inbox/<task-id>.ndjson
+  done
+  ```
+  Houdt jouw turn 10 minuten open, niet ideaal voor parallelle werkers.
+
+**Default = optie A.** Schakel terug naar B alleen als Monitor faalt of niet beschikbaar is. C is noodgreep.
 
 ### 4. Event-surfacing per worker-event
 

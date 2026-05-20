@@ -3,7 +3,7 @@ name: cockpit-monitor
 description: >
   Poll all active worker inboxes and surface the events that need operator attention
   (questions, done, errors). Use either manually after spawning a worker, or
-  automatically via /loop 60 /cockpit-monitor.
+  automatically via Monitor (event-driven) or /loop 1m /cockpit-monitor (poll).
 ---
 
 # cockpit-monitor
@@ -55,15 +55,15 @@ Als geen events: meld dat niet expliciet (geen spam). Wacht op de volgende loop-
 
 Niet automatisch wissen — laat events staan voor de geschiedenis. v0.5+ kan een retention-config krijgen.
 
-## /loop integratie
+## Activatie
 
-User-side aanroep:
+Twee routes, in volgorde van voorkeur:
 
-```
-/loop 60 /cockpit-monitor
-```
+**Event-driven (aanbevolen)**: gebruik de `Monitor` skill met file-watch op `~/.claude-launcher/inbox/*.ndjson` filterend op events van type `question`, `deliver`, `done`, of `error`. Direct getriggerd op een nieuwe regel.
 
-Elke 60 seconden wordt deze skill aangeroepen. Stop met `Ctrl+C` of door `/loop stop`.
+**Polling-fallback**: `/loop 1m /cockpit-monitor` (met **expliciete tijdseenheid** — `30s`, `1m`, `2m`, `5m`). NOOIT `/loop 60` zonder unit, dat valt naar dynamic mode. Stop met `/loop stop`.
+
+`project-manager` skill kiest standaard route A (Monitor); deze skill werkt onder beide.
 
 ## Wat NIET doen
 

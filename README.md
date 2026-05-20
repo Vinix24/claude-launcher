@@ -89,7 +89,7 @@ Het script vraagt om bevestiging bij elke installatie-stap. Niets wordt geforcee
 
 4. **Volg de voortgang** (optioneel automatisch):
    ```
-   /loop 60 /cockpit-monitor
+   /loop 1m /cockpit-monitor
    ```
    Elke 60 seconden checkt de cockpit de inbox en surfaced relevante events (vragen, oplevering, errors).
 
