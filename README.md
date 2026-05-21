@@ -95,6 +95,17 @@ Het script vraagt om bevestiging bij elke installatie-stap. Niets wordt geforcee
 
 5. **Werker is klaar.** Output staat in `~/.claude-launcher/output/`.
 
+## De demo: één prompt, twee compleet verschillende blogs
+
+`install.sh` zet standaard twee voorbeeld-klantworkspaces neer:
+
+- **GrowthLab** — fictief performance marketing bureau, cijfers-eerst, B2B SaaS
+- **Studio Atlas** — fictieve brand consultancy, klassiek Nederlands, verhalend
+
+Dezelfde prompt naar beide spawnen → twee compleet andere blogs. Niet door slimme prompting, door eigen `CLAUDE.md` + `brand-voice.md` + `rules.md` per workspace.
+
+Volledige copy-paste prompt en uitleg in **[docs/DEMO-PROMPT.md](docs/DEMO-PROMPT.md)**. De prompt eindigt met een automatische vergelijkings-stap die het verschil expliciet maakt.
+
 ## CLI-overzicht
 
 ```bash

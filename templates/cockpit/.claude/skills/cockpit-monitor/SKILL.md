@@ -65,11 +65,15 @@ Als er geen nieuwe events zijn: meld dat niet expliciet. Geen "ik blijf kijken, 
 
 ## Activatie
 
-Default route is `/loop 60s /cockpit-monitor` — `project-manager` zet deze automatisch op direct na een dispatch.
+Twee routes, project-manager kiest:
 
-**Tijdseenheid is verplicht** in /loop. Geldig: `30s`, `60s`, `1m`, `2m`, `5m`. NOOIT `/loop 30` of `/loop 60` zonder unit — dat valt naar dynamic mode en werkt niet.
+**Default — Monitor skill (event-driven):** `project-manager` invokes `Monitor` met `tail -F -n +1` op `~/.claude-launcher/inbox/*.ndjson`. Direct getriggerd bij nieuwe regel. Geen polling-cycles. Pre-creatie van inbox-file door `cockpit launch` voorkomt de macOS file-watch race.
 
-Stoppen: `/loop stop`. Project-manager doet dit automatisch zodra alle actieve workers `done` hebben gerapporteerd en de gebruiker een vervolgactie heeft gekozen.
+**Fallback — /loop 60s /cockpit-monitor:** wanneer Monitor niet beschikbaar is. Recurring poll elke 60 seconden. **Tijdseenheid is verplicht** — geldig: `30s`, `60s`, `1m`, `2m`, `5m`. NOOIT `/loop 30` of `/loop 60` zonder unit, dat valt naar dynamic mode. Stoppen: `/loop stop`.
+
+Deze skill (`cockpit-monitor`) werkt onder beide routes — bij Monitor wordt hij niet expliciet aangeroepen (Monitor surfaced events direct), bij /loop wordt hij elke 60s aangeroepen en doorloopt zijn eigen lees-en-surface flow hieronder.
+
+Project-manager stopt monitoring zodra alle actieve workers `done` hebben gerapporteerd en de gebruiker een vervolgactie heeft gekozen.
 
 ## Inbox-cleanup (geen v0.0)
 

@@ -51,15 +51,21 @@ Eén zin, geen lange uitleg:
 
 ### 3. Automatische monitor-loop
 
-Direct na dispatch (geen wachten op de gebruiker). Drie routes:
+Direct na dispatch (geen wachten op de gebruiker). Drie routes, in volgorde van voorkeur:
 
-- **Optie A (DEFAULT, gebruik dit): `/loop 60s /cockpit-monitor`.** Recurring poll elke 60 seconden van de cockpit-monitor skill. Die skill leest de hele inbox en tracked welke events al gezien zijn — mist nooit iets. **Tijdseenheid is verplicht** (`30s`, `60s`, `1m`, `2m`). Een naakte `/loop 30` zonder unit valt terug naar dynamic mode en werkt niet zoals verwacht. Voor blog-werk: `60s` is de sweet spot (snel genoeg om binnen één blog-iteratie te updaten, niet zo agressief dat je LLM-cycles verspilt op idle ticks).
+- **Optie A (DEFAULT, gebruik dit): Monitor skill, event-driven.** Invoke `Monitor` met file-watch op `~/.claude-launcher/inbox/*.ndjson` (alle inbox-bestanden tegelijk), filterend op events van type `question`, `deliver`, `done`, of `error`. Direct getriggerd bij elke nieuwe regel, geen polling-cycles, geen cache-misses, geen 60s-latency op questions.
 
-- **Optie B (advanced, alleen voor power-users): Monitor skill.** Event-driven file-watch via `Monitor` skill op `~/.claude-launcher/inbox/*.ndjson`. **Pas op**: op macOS heeft `tail -F` een race-conditie tussen file-creation en watch-attach. Als de worker zijn eerste events schrijft vóór Monitor klaar staat met watchen, mis je die regels. Workaround: invoke Monitor pas NA `sleep 15` zodat de inbox al events bevat, of gebruik `tail -n +1 -F` (lees alles + follow) in plaats van `-n 0`. Liever optie A.
+  **Verplichte parameters om de macOS race-conditie te voorkomen:**
 
-- **Optie C (in-turn polling, noodgreep):** bash-sleep loop binnen je huidige turn. Houdt je turn 10 min open, blokkeert parallelle dispatches. Alleen als A en B beide falen.
+  - `cockpit launch` pre-creëert de inbox-file vóór de tmux-spawn (sinds commit `da22bac`+), dus het bestand bestaat al wanneer Monitor armt. Geen extra wait nodig in normale flow.
+  - Gebruik `tail -F -n +1` (NIET `-n 0`). De `-n +1` zorgt dat tail vanaf regel 1 leest plus blijft volgen — zodat events die tussen file-create en watch-attach binnenkwamen alsnog gezien worden.
+  - Bij defensieve werk: voeg `until [ -f "$inbox" ]; do sleep 0.2; done` toe vóór de tail-call. Hoort niet nodig te zijn maar maakt de pipeline immuun voor toekomstige veranderingen.
 
-**Standaard = optie A.** Geen verleiding om Monitor te gebruiken "omdat het sneller is", op de huidige stack geeft het meer problemen dan het oplost.
+- **Optie B (fallback): `/loop 60s /cockpit-monitor`.** Recurring poll elke 60 seconden van de cockpit-monitor skill. Die skill leest de hele inbox en tracked welke events al gezien zijn. Werkt altijd, maar geeft tot 60s latency op `question`-events (worker zit dan te wachten). Acceptabel voor blog-werk (taken van 3-5 min), irritant voor interactieve flows. **Tijdseenheid is verplicht** — `30s`, `60s`, `1m`, `2m`. Een naakte `/loop 30` zonder unit valt terug naar dynamic mode.
+
+- **Optie C (noodgreep): in-turn bash-sleep loop.** Houdt je turn 10 min open, blokkeert parallelle dispatches. Alleen als A en B beide falen.
+
+**Standaard = optie A.** Bij twijfel of als Monitor in jouw harness niet beschikbaar is: optie B is de robuuste fallback.
 
 ### 4. Event-surfacing per worker-event
 
@@ -131,8 +137,9 @@ PM (intern):
 PM (naar gebruiker, één regel):
   "Werker linkedin-2026-05-20-solopreneur-productiviteit draait. Ik volg de inbox."
 
-PM (start recurring poll):
-  /loop 60s /cockpit-monitor
+PM (start event-driven watch):
+  Monitor(tail -F -n +1 inbox/*.ndjson, filter question|deliver|done|error)
+  # of als Monitor niet beschikbaar: /loop 60s /cockpit-monitor
 
 PM (na 1 min, nieuw event):
   "[linkedin-2026-05-20-solopreneur-productiviteit] status: brand-voice gelezen, hook gekozen"

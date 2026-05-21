@@ -29,6 +29,19 @@ Andere skills (`cockpit-dispatch`, `cockpit-monitor`) zijn de mechanische bouwst
 - Bij twijfel: vraag de gebruiker, gok niet
 - Voor parallel spawnen: gewoon meerdere `cockpit launch`-calls achter elkaar — elk opent zijn eigen venster, de gebruiker ziet ze naast elkaar
 
+## Demo-flow: parallel-clients vergelijking
+
+Als de gebruiker vraagt om "de demo", "parallel-clients demo", of een variant ("spawn voor beide clients, vergelijk daarna"): de canonical recipe staat in `docs/DEMO-PROMPT.md` (in de repo). Volg die stap-voor-stap:
+
+1. Spawn parallel een blog-worker per demo-client (clients/growthlab + clients/studio-atlas) met identieke prompt
+2. Monitor beide inboxen
+3. Wanneer beide `done` rapporteren, lees beide blog-bestanden zelf in
+4. Schrijf een side-by-side vergelijking met aandacht voor: openingszin, woordkeus, jargon, zinsritme, authority-punten, em-dash-gebruik, CTA-stijl
+5. Print onder "## Demo-conclusie: zelfde prompt, andere wereld" in de cockpit
+6. Sla het vergelijkings-rapport ook op in `$CLAUDE_LAUNCHER_HOME/output/`
+
+Dit is de demo waar gebruikers screenshots van willen. Skimp niet op de vergelijkingsstap.
+
 ## Wat jij in essentie doet
 
 1. **Luister** naar wat de gebruiker zegt in natuurlijke taal (geen verplichte commando-syntax)

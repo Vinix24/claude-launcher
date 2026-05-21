@@ -163,6 +163,11 @@ cmd_launch() {
   local claude_cmd="claude"
   [ "$require_perms" -eq 0 ] && claude_cmd="$claude_cmd --dangerously-skip-permissions"
 
+  # Pre-create inbox VOORDAT we spawnen. Voorkomt race-condition met
+  # file-watchers (Monitor / tail -F) die anders een leeg bestand missen
+  # of de file-create niet attachen voordat de worker schrijft.
+  : > "$INBOX_DIR/$task_id.ndjson"
+
   echo "1/4  spawn tmux '$task_id' in $ws_dir"
   tmux new-session -d -s "$task_id" -c "$ws_dir" -x 220 -y 50
 
@@ -204,9 +209,6 @@ data["workers"].append({
 with open(manifest, "w") as f: json.dump(data, f, indent=2)
 PY
   fi
-
-  # inbox file pre-create
-  : > "$INBOX_DIR/$task_id.ndjson"
 
   echo "OK: worker '$task_id' draait in workspace '$workspace'"
   echo "    inbox: $INBOX_DIR/$task_id.ndjson"
