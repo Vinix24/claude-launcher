@@ -6,7 +6,7 @@ Voor de eerste LinkedIn-post in de launch-serie. Geen voice-over, ondertiteling 
 
 Voor opname:
 
-- iTerm-vensters op één scherm, niet op laptop-display (groter is beter voor leesbaarheid)
+- Terminal-vensters (iTerm of Terminal.app) op één scherm, niet op laptop-display (groter is beter voor leesbaarheid)
 - Lettergrootte op 14-16pt minimum
 - Theme: hoog contrast (dark mode of light mode, niet halfweg)
 - Geluid uit

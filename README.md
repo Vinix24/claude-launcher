@@ -121,7 +121,7 @@ Draai de parallel-clients demo:
     FAQ-sectie aan het eind. Roep de blog-editor aan voor publicatie.
     Sla op in $CLAUDE_LAUNCHER_HOME/output/."
 
-2. Geen --headless. Ik wil beide iTerm-vensters zien opengaan.
+2. Geen --headless. Ik wil beide terminal-vensters (iTerm of Terminal.app) zien opengaan.
 
 3. Wacht tot beide workers 'done' rapporteren via de inbox.
 
@@ -144,7 +144,7 @@ Draai de parallel-clients demo:
    vergelijkings-rapport. Vraag of ik ze wil openen.
 ```
 
-Verwacht resultaat: twee iTerm-vensters openen met workers, na 4-7 minuten zie je de demo-conclusie in je cockpit-terminal. Drie deliverables in `~/.claude-launcher/output/`.
+Verwacht resultaat: twee nieuwe terminal-vensters openen met de workers (iTerm als je dat gebruikt, anders Terminal.app), na 4-7 minuten zie je de demo-conclusie in je cockpit-terminal. Drie deliverables in `~/.claude-launcher/output/`.
 
 Volledige uitleg, varianten en troubleshooting in **[docs/DEMO-PROMPT.md](docs/DEMO-PROMPT.md)**.
 

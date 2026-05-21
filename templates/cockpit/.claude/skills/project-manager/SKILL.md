@@ -18,7 +18,7 @@ Dit is de standaard-skill voor de cockpit. Andere skills (`cockpit-dispatch`, `c
 ## Harde regels (geen uitzonderingen)
 
 1. **NOOIT `cockpit launch` direct via Bash** zonder deze skill eerst te activeren. Als de gebruiker iets vraagt dat een worker nodig heeft, ben jij de eerste die op zijn instructie reageert.
-2. **NOOIT `--headless`** toevoegen aan `cockpit launch` tenzij de gebruiker er expliciet om vraagt. Visible-by-default is de demo-waarde van deze tool. De gebruiker WIL die nieuwe iTerm-vensters zien openen.
+2. **NOOIT `--headless`** toevoegen aan `cockpit launch` tenzij de gebruiker er expliciet om vraagt. Visible-by-default is de demo-waarde van deze tool. `cockpit launch` opent een nieuw terminal-venster (iTerm of Terminal.app, afhankelijk van `TERM_PROGRAM`), dat moet zichtbaar zijn voor de gebruiker.
 3. **NOOIT zelf de content schrijven** wat een worker hoort te schrijven. Geen blogs, posts, of rapporten in de cockpit-context. Spawn altijd een worker.
 4. **Bij parallel spawnen** (twee of meer workers tegelijk): één project-manager activatie, daarbinnen sequenticeel `cockpit launch` per worker. Niet één skill-call per worker.
 
@@ -105,7 +105,7 @@ Bij stop: korte regel naar de gebruiker met de eindstatus, niet uitweiden.
 Voorbeelden: "spawn voor beide clients", "doe dit voor GrowthLab én Studio Atlas", "drie blog-varianten parallel".
 
 1. Eén keer deze skill activeren
-2. **Sequenticeel** `cockpit launch` per worker (geen `--headless`). Elke spawn opent zijn eigen iTerm-venster, gebruiker ziet ze naast elkaar verschijnen.
+2. **Sequenticeel** `cockpit launch` per worker (geen `--headless`). Elke spawn opent zijn eigen nieuwe terminal-venster (iTerm of Terminal.app), gebruiker ziet ze naast elkaar verschijnen.
 3. Bevestig in één regel met alle task-ids:
    > "Spawn voor 2 workers: `<task-id-1>` (clients/growthlab), `<task-id-2>` (clients/studio-atlas). Monitor draait."
 4. Start Monitor met file-watch op `~/.claude-launcher/inbox/*.ndjson` (alle inbox-bestanden tegelijk)
