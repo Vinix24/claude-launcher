@@ -28,7 +28,7 @@ Draai de parallel-clients demo:
     FAQ-sectie aan het eind. Roep de blog-editor aan voor publicatie.
     Sla op in $CLAUDE_LAUNCHER_HOME/output/."
 
-2. Geen --headless. Ik wil beide terminal-vensters (iTerm of Terminal.app) zien opengaan.
+2. Geen --headless. Spawn beide als nieuwe tmux-windows in dezelfde sessie.
 
 3. Wacht tot beide workers 'done' rapporteren via de inbox.
 
@@ -54,7 +54,7 @@ Draai de parallel-clients demo:
 ## Wat er hoort te gebeuren
 
 1. **Cockpit-Claude activeert `Skill(project-manager)`** als allereerste actie. Niet direct Bash.
-2. Twee `cockpit launch`-calls **zonder** `--headless`. Twee nieuwe terminal-vensters openen automatisch (iTerm als je dat gebruikt, anders Terminal.app — detect via `TERM_PROGRAM`).
+2. Twee `cockpit launch`-calls **zonder** `--headless`. Twee nieuwe tmux-windows worden toegevoegd aan de cockpit-sessie (gelabeld met de task-id). Switch met `Ctrl-B + window-nummer` of `Ctrl-B w`.
 3. Monitor armt op `~/.claude-launcher/inbox/*.ndjson` (of `/loop 60s` als fallback).
 4. Per worker komt er een stroom events binnen: status (begonnen, brand-voice gelezen, outline klaar, draft 60%), uiteindelijk deliver + done.
 5. Per worker volgt een tweede mini-flow: blog-editor leest het concept, schrijft een verdict-rapport (PASS / PASS WITH NOTES / FAIL), levert dat ook op.
@@ -115,7 +115,7 @@ Hoe meer het onderwerp in beide kampen relevant is, hoe scherper de tegenstellin
 
 **De cockpit-Claude schreef de blog zelf in plaats van te dispatchen.** De project-manager skill activeerde niet. Restart de cockpit (`cockpit start`) of begin de prompt expliciet met "Activeer eerst de project-manager skill, daarna ...".
 
-**Geen terminal-vensters openen.** Cockpit-Claude voegde `--headless` toe. In zijn output zie je dan "headless, attach handmatig". Restart, begin prompt expliciet met "Geen --headless". Bij eerste run kan macOS om Automation-toestemming voor iTerm of Terminal.app vragen — accepteren.
+**Geen nieuwe tmux-windows zichtbaar.** Check eerst of je `cockpit start` hebt gedaan (anders draait er geen sessie om in te splitsen, en valt cockpit launch terug op losse sessie + osascript). Als de sessie wel actief is maar workers verschijnen niet als windows: cockpit-Claude voegde mogelijk `--headless` toe. Restart en zeg expliciet "geen --headless".
 
 **Monitor mist events.** Zelden, maar mogelijk bij oudere cockpit-versies zonder pre-create van inbox-file. Workaround: gebruik `/loop 60s /cockpit-monitor` expliciet in plaats van Monitor.
 
@@ -127,4 +127,4 @@ Hoe meer het onderwerp in beide kampen relevant is, hoe scherper de tegenstellin
 
 Deze prompt is wat je in de demo-video laat zien. Zie `docs/DEMO-SCRIPT.md` voor de regie-noten (camera, ondertiteling, timing).
 
-Ideale opname: één terminal-venster met de cockpit (60% breedte), twee nieuwe terminal-vensters die opspringen voor de werkers (40% rechts, gesplitst), en aan het eind het vergelijkings-rapport in de cockpit-terminal. Totale screentijd 60-90 seconden, eventueel met versnelde tussen-stukken waar de workers schrijven.
+Ideale opname: één terminal-venster met de cockpit-tmux-sessie. Demonstreer het window-switchen met `Ctrl-B w` zodat kijkers zien dat de drie sessies (cockpit + 2 workers) in één terminal zitten. Aan het eind toont de cockpit het vergelijkings-rapport. Totale screentijd 60-90 seconden, eventueel met versnelde tussen-stukken waar de workers schrijven.

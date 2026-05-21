@@ -72,6 +72,19 @@ curl -fsSL https://raw.githubusercontent.com/Vinix24/claude-launcher/main/instal
 
 Het script vraagt om bevestiging bij elke installatie-stap. Niets wordt geforceerd.
 
+## Architectuur: één tmux-sessie
+
+`cockpit start` maakt een tmux-sessie `claude-launcher` aan en attached automatisch. De cockpit-Claude draait in window 0. Elke `cockpit launch` voegt een nieuwe worker toe als nieuw window in dezelfde sessie — geen aparte desktop-vensters.
+
+Switch tussen cockpit + workers:
+
+- `Ctrl-B + 0` → cockpit
+- `Ctrl-B + 1` → eerste worker
+- `Ctrl-B + w` → window-lijst (kies met pijltjes)
+- `cockpit attach <task-id>` → spring naar specifieke worker
+
+Geïnspireerd door [smux](https://github.com/ShawnPana/smux) — single-session, multi-pane setup voor agent-automatisering.
+
 ## Eerste run
 
 1. **Vul je brand-voice in.** Edit `~/.claude-launcher/workspaces/marketing/brand-voice.md` met jouw stem, doelgroep en authority-punten. Hoe specifieker, hoe consistenter de output.
@@ -144,7 +157,7 @@ Draai de parallel-clients demo:
    vergelijkings-rapport. Vraag of ik ze wil openen.
 ```
 
-Verwacht resultaat: twee nieuwe terminal-vensters openen met de workers (iTerm als je dat gebruikt, anders Terminal.app), na 4-7 minuten zie je de demo-conclusie in je cockpit-terminal. Drie deliverables in `~/.claude-launcher/output/`.
+Verwacht resultaat: twee nieuwe **tmux-windows** in dezelfde sessie (geen aparte desktop-vensters — switch tussen workers met `Ctrl-B + window-nummer` of `Ctrl-B w`). Na 4-7 minuten zie je de demo-conclusie in je cockpit-terminal. Drie deliverables in `~/.claude-launcher/output/`.
 
 Volledige uitleg, varianten en troubleshooting in **[docs/DEMO-PROMPT.md](docs/DEMO-PROMPT.md)**.
 

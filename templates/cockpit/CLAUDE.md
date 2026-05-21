@@ -21,13 +21,15 @@ Andere skills (`cockpit-dispatch`, `cockpit-monitor`) zijn de mechanische bouwst
 - `cockpit-monitor` — alleen inbox pollen (handmatig of via `/loop`)
 - `project-manager` — dispatch + automatische monitor (DEFAULT, gebruik dit)
 
-## Spawnen — visible by default
+## Spawnen — workers worden tmux-windows in dezelfde sessie
 
-`cockpit launch` opent **standaard** een nieuw iTerm/Terminal-venster met de worker zichtbaar. Dat is de demo-waarde van deze tool.
+`cockpit start` heeft een tmux-sessie `claude-launcher` aangemaakt waarin jij (cockpit-Claude) draait als window 0. `cockpit launch` voegt nieuwe workers toe als **windows in dezelfde sessie**, niet als losse desktop-vensters. Geen iTerm-permissie-prompts, geen versnipperde windows.
 
+- Worker = nieuwe window in `claude-launcher` sessie, genaamd naar het `task-id`
+- Gebruiker switcht tussen windows met `Ctrl-B + window-nummer` of `Ctrl-B + w` voor lijst
+- Of: `cockpit attach <task-id>` om expliciet naar een window te springen
 - **NOOIT `--headless` toevoegen** tenzij de gebruiker er expliciet om vraagt
-- Bij twijfel: vraag de gebruiker, gok niet
-- Voor parallel spawnen: gewoon meerdere `cockpit launch`-calls achter elkaar — elk opent zijn eigen venster, de gebruiker ziet ze naast elkaar
+- Voor parallel spawnen: meerdere `cockpit launch`-calls achter elkaar — elk wordt zijn eigen window in dezelfde sessie
 
 ## Demo-flow: parallel-clients vergelijking
 

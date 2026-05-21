@@ -28,6 +28,10 @@ WORKSPACES_DIR="$LAUNCHER_HOME/workspaces"
 COCKPIT_DIR="$LAUNCHER_HOME/cockpit"
 VENV_BIN_DIR="$LAUNCHER_HOME/.venv/bin"
 
+# Eén tmux-sessie voor alles. Cockpit-Claude is window 0, workers worden window N.
+# Inspired by smux (github.com/ShawnPana/smux) — single-session, no desktop clutter.
+SESSION_NAME="claude-launcher"
+
 # Resolve which python to use. Prefer the launcher venv (with python-docx,
 # python-pptx, pyyaml installed by install.sh), else fall back to system python3.
 launcher_python() {
@@ -37,6 +41,26 @@ launcher_python() {
     echo "python3"
   else
     echo ""
+  fi
+}
+
+# Update de manifest met een nieuwe worker. Shared tussen single-session
+# en fallback launch-paden.
+update_manifest() {
+  local task_id="$1" workspace="$2"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$MANIFEST_FILE" "$task_id" "$workspace" <<'PY'
+import json, sys, time
+manifest, task_id, workspace = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(manifest) as f: data = json.load(f)
+data["workers"] = [w for w in data.get("workers", []) if w["task_id"] != task_id]
+data["workers"].append({
+    "task_id": task_id,
+    "workspace": workspace,
+    "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+})
+with open(manifest, "w") as f: json.dump(data, f, indent=2)
+PY
   fi
 }
 
@@ -108,6 +132,7 @@ cmd_start() {
 
   [ -d "$COCKPIT_DIR" ] || die "cockpit folder ontbreekt: $COCKPIT_DIR (run install.sh)"
   command -v claude >/dev/null 2>&1 || die "claude CLI niet gevonden in PATH"
+  command -v tmux   >/dev/null 2>&1 || die "tmux niet geïnstalleerd"
 
   local require_perms=0
   while [ $# -gt 0 ]; do
@@ -118,15 +143,26 @@ cmd_start() {
   done
 
   local claude_cmd="claude"
-  if [ "$require_perms" -eq 0 ]; then
-    claude_cmd="$claude_cmd --dangerously-skip-permissions"
-    echo "cockpit: starten in $COCKPIT_DIR (auto-approve tools: aan)"
-  else
-    echo "cockpit: starten in $COCKPIT_DIR (auto-approve tools: uit, je krijgt prompts)"
+  [ "$require_perms" -eq 0 ] && claude_cmd="$claude_cmd --dangerously-skip-permissions"
+
+  # Als de sessie al bestaat: gewoon attachen, geen nieuwe spawn
+  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "cockpit: sessie '$SESSION_NAME' bestaat al, attach"
+    exec tmux attach-session -t "$SESSION_NAME"
   fi
 
-  cd "$COCKPIT_DIR"
-  exec $claude_cmd
+  echo "cockpit: nieuwe sessie '$SESSION_NAME' in $COCKPIT_DIR"
+  [ "$require_perms" -eq 0 ] && echo "  auto-approve tools: aan" || echo "  auto-approve tools: uit"
+
+  # Maak detached sessie aan, window 0 = cockpit-Claude
+  tmux new-session -d -s "$SESSION_NAME" -n "cockpit" -c "$COCKPIT_DIR" -x 220 -y 50
+  if [ -d "$VENV_BIN_DIR" ]; then
+    tmux send-keys -t "$SESSION_NAME:cockpit" "export PATH=\"$VENV_BIN_DIR:\$PATH\"" Enter
+  fi
+  tmux send-keys -t "$SESSION_NAME:cockpit" "$claude_cmd" Enter
+
+  # Attach — exec zodat de user volledig in de sessie zit
+  exec tmux attach-session -t "$SESSION_NAME"
 }
 
 cmd_launch() {
@@ -153,10 +189,6 @@ cmd_launch() {
   local ws_dir="$WORKSPACES_DIR/$workspace"
   [ -d "$ws_dir" ] || die "workspace bestaat niet: $ws_dir"
 
-  if tmux has-session -t "$task_id" 2>/dev/null; then
-    die "task-id '$task_id' bestaat al. Kies een andere of: cockpit kill $task_id"
-  fi
-
   command -v claude >/dev/null 2>&1 || die "claude CLI niet gevonden in PATH"
   command -v tmux   >/dev/null 2>&1 || die "tmux niet geïnstalleerd"
 
@@ -168,14 +200,63 @@ cmd_launch() {
   # of de file-create niet attachen voordat de worker schrijft.
   : > "$INBOX_DIR/$task_id.ndjson"
 
+  # Hoofdmodus: cockpit-sessie bestaat (cockpit start is gedaan).
+  # Maak een nieuwe window in dezelfde sessie, geen nieuw desktop-venster.
+  # Inspired by smux: alles in één tmux-sessie houdt het overzichtelijk.
+  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    # Conflict-check: window met deze naam mag niet al bestaan
+    if tmux list-windows -t "$SESSION_NAME" -F '#W' 2>/dev/null | grep -qx "$task_id"; then
+      die "window '$task_id' bestaat al in sessie '$SESSION_NAME'. Kies andere task-id of: cockpit kill $task_id"
+    fi
+
+    echo "1/4  nieuwe window '$task_id' in sessie '$SESSION_NAME'"
+    tmux new-window -t "$SESSION_NAME:" -n "$task_id" -c "$ws_dir"
+    local target="$SESSION_NAME:$task_id"
+
+    echo "2/4  exporteer CLAUDE_LAUNCHER_TASK_ID en start Claude"
+    tmux send-keys -t "$target" "export CLAUDE_LAUNCHER_TASK_ID=$task_id" Enter
+    tmux send-keys -t "$target" "export CLAUDE_LAUNCHER_HOME=$LAUNCHER_HOME" Enter
+    if [ -d "$VENV_BIN_DIR" ]; then
+      tmux send-keys -t "$target" "export PATH=\"$VENV_BIN_DIR:\$PATH\"" Enter
+    fi
+    tmux send-keys -t "$target" "$claude_cmd" Enter
+
+    echo "3/4  wacht ${wait_seconds}s op Claude startup"
+    sleep "$wait_seconds"
+
+    echo "4/4  inject prompt in window '$task_id'"
+    local tmp_prompt
+    tmp_prompt="$(mktemp -t cockpit-prompt-XXXX)"
+    printf '%s' "$prompt" > "$tmp_prompt"
+    tmux load-buffer "$tmp_prompt"
+    tmux paste-buffer -t "$target"
+    sleep 0.4
+    tmux send-keys -t "$target" Enter
+    rm -f "$tmp_prompt"
+
+    update_manifest "$task_id" "$workspace"
+
+    echo "OK: worker '$task_id' draait als window in sessie '$SESSION_NAME'"
+    echo "    inbox: $INBOX_DIR/$task_id.ndjson"
+    echo "    switch: Ctrl-B + window-nummer, of: cockpit attach $task_id"
+    return 0
+  fi
+
+  # Fallback: cockpit-sessie bestaat niet. Spawn als losse sessie en open
+  # in een nieuw desktop-venster (osascript). Voor wie cockpit launch zonder
+  # cockpit start aanroept.
+  if tmux has-session -t "$task_id" 2>/dev/null; then
+    die "task-id '$task_id' bestaat al. Kies een andere of: cockpit kill $task_id"
+  fi
+
+  echo "(fallback: geen '$SESSION_NAME' sessie actief, spawn als losse sessie)"
+
   echo "1/4  spawn tmux '$task_id' in $ws_dir"
   tmux new-session -d -s "$task_id" -c "$ws_dir" -x 220 -y 50
 
   echo "2/4  exporteer CLAUDE_LAUNCHER_TASK_ID en start Claude"
   tmux send-keys -t "$task_id" "export CLAUDE_LAUNCHER_TASK_ID=$task_id" Enter
   tmux send-keys -t "$task_id" "export CLAUDE_LAUNCHER_HOME=$LAUNCHER_HOME" Enter
-  # zet de launcher-venv vooraan in PATH zodat 'python3' inside de werker
-  # automatisch python-docx, python-pptx en pyyaml ziet
   if [ -d "$VENV_BIN_DIR" ]; then
     tmux send-keys -t "$task_id" "export PATH=\"$VENV_BIN_DIR:\$PATH\"" Enter
   fi
@@ -194,35 +275,25 @@ cmd_launch() {
   tmux send-keys -t "$task_id" Enter
   rm -f "$tmp_prompt"
 
-  # manifest update
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "$MANIFEST_FILE" "$task_id" "$workspace" <<'PY'
-import json, sys, time
-manifest, task_id, workspace = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(manifest) as f: data = json.load(f)
-data["workers"] = [w for w in data.get("workers", []) if w["task_id"] != task_id]
-data["workers"].append({
-    "task_id": task_id,
-    "workspace": workspace,
-    "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-})
-with open(manifest, "w") as f: json.dump(data, f, indent=2)
-PY
-  fi
+  update_manifest "$task_id" "$workspace"
 
-  echo "OK: worker '$task_id' draait in workspace '$workspace'"
+  echo "OK: worker '$task_id' draait als losse tmux-sessie"
   echo "    inbox: $INBOX_DIR/$task_id.ndjson"
 
-  # Visible launch: open a new terminal window attached to the worker
+  # Fallback-pad: cockpit-sessie ontbreekt, dus we kunnen niet als window
+  # in dezelfde sessie spawnen. Open een nieuw desktop-venster via osascript.
   if [ "$headless" -eq 0 ]; then
     if open_terminal_attached "$task_id"; then
-      echo "    venster geopend en attached"
+      echo "    nieuw terminal-venster geopend en attached"
     else
       echo "    visible open faalde, attach handmatig: cockpit attach $task_id"
     fi
   else
     echo "    headless, attach handmatig: cockpit attach $task_id"
   fi
+
+  echo "  tip: voor de schoonste ervaring start eerst 'cockpit start',"
+  echo "       dan worden volgende launches windows in dezelfde sessie"
 }
 
 cmd_status() {
@@ -253,13 +324,44 @@ PY
 cmd_attach() {
   [ $# -ge 1 ] || die "usage: cockpit attach <task-id>"
   local task_id="$1"
-  tmux has-session -t "$task_id" 2>/dev/null || die "geen sessie '$task_id'"
-  exec tmux attach -t "$task_id"
+
+  # Hoofdmodus: task-id is een window in de cockpit-sessie
+  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    if tmux list-windows -t "$SESSION_NAME" -F '#W' 2>/dev/null | grep -qx "$task_id"; then
+      # Als we al binnen tmux zitten, gewoon select-window
+      if [ -n "${TMUX:-}" ]; then
+        exec tmux select-window -t "$SESSION_NAME:$task_id"
+      fi
+      # Anders: attach session en switch direct naar de juiste window
+      exec tmux attach -t "$SESSION_NAME" \; select-window -t "$SESSION_NAME:$task_id"
+    fi
+  fi
+
+  # Fallback: task-id is een losse sessie
+  if tmux has-session -t "$task_id" 2>/dev/null; then
+    exec tmux attach -t "$task_id"
+  fi
+
+  die "geen window of sessie gevonden voor '$task_id'"
 }
 
 cmd_kill() {
   ensure_dirs
   [ $# -ge 1 ] || die "usage: cockpit kill <task-id> | --all"
+
+  # Kill een specifieke worker: eerst kijken of het een window in de cockpit-sessie is,
+  # anders fallback op losse sessie.
+  kill_one() {
+    local tid="$1"
+    if tmux has-session -t "$SESSION_NAME" 2>/dev/null && \
+       tmux list-windows -t "$SESSION_NAME" -F '#W' 2>/dev/null | grep -qx "$tid"; then
+      tmux kill-window -t "$SESSION_NAME:$tid" 2>/dev/null && echo "killed window: $tid"
+    elif tmux has-session -t "$tid" 2>/dev/null; then
+      tmux kill-session -t "$tid" 2>/dev/null && echo "killed session: $tid"
+    else
+      echo "(geen window of sessie '$tid' actief)"
+    fi
+  }
 
   if [ "$1" = "--all" ]; then
     if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_FILE" ]; then
@@ -268,8 +370,7 @@ import json, sys
 with open(sys.argv[1]) as f: data = json.load(f)
 for w in data.get("workers", []): print(w["task_id"])
 PY
-        tmux kill-session -t "$tid" 2>/dev/null || true
-        echo "killed: $tid"
+        kill_one "$tid"
       done
       echo '{"workers": []}' > "$MANIFEST_FILE"
     fi
@@ -277,8 +378,7 @@ PY
   fi
 
   local task_id="$1"
-  tmux has-session -t "$task_id" 2>/dev/null && tmux kill-session -t "$task_id"
-  echo "killed: $task_id"
+  kill_one "$task_id"
 
   if command -v python3 >/dev/null 2>&1; then
     python3 - "$MANIFEST_FILE" "$task_id" <<'PY'
