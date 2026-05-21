@@ -213,6 +213,19 @@ cmd_launch() {
   # of de file-create niet attachen voordat de worker schrijft.
   : > "$INBOX_DIR/$task_id.ndjson"
 
+  # Auto-append .done-protocol als de orchestrator het is vergeten.
+  # Dit garandeert dat workers altijd een marker schrijven als ze klaar zijn,
+  # ook als de injected prompt het niet expliciet noemt. Zonder dit blok zou
+  # de cockpit blijven wachten op een signaal dat nooit komt.
+  if ! printf '%s' "$prompt" | grep -q '\.done'; then
+    prompt="$prompt
+
+VERPLICHT laatste actie zodra alle deliverables (blog, rapport, etc.) klaar zijn:
+  echo \"<korte samenvatting van wat je opleverde>\" > \$CLAUDE_LAUNCHER_HOME/output/\$CLAUDE_LAUNCHER_TASK_ID.done
+
+Dat .done-bestand is hoe de cockpit weet dat jij klaar bent. Sla deze stap niet over."
+  fi
+
   # Hoofdmodus: cockpit-sessie bestaat (cockpit start is gedaan).
   # Workers worden PANES rechts van de cockpit via split-window + main-vertical
   # layout. Inspired by smux: cockpit links, alle workers stacken rechts.
