@@ -132,11 +132,17 @@ Draai de parallel-clients demo:
    "Schrijf een supporting article van 1000-1500 woorden over
     'de toekomst van marketing', primair keyword 'toekomst marketing',
     FAQ-sectie aan het eind. Roep de blog-editor aan voor publicatie.
-    Sla op in $CLAUDE_LAUNCHER_HOME/output/."
+    Sla op in $CLAUDE_LAUNCHER_HOME/output/.
 
-2. Geen --headless. Ik wil beide terminal-vensters (iTerm of Terminal.app) zien opengaan.
+    Als ALLE deliverables klaar zijn, schrijf als laatste actie:
+      echo '<samenvatting>' > $CLAUDE_LAUNCHER_HOME/output/$CLAUDE_LAUNCHER_TASK_ID.done
 
-3. Wacht tot beide workers 'done' rapporteren via de inbox.
+    Dat .done bestand is hoe de cockpit weet dat jij klaar bent."
+
+2. Geen --headless. Spawn beide als panes rechts van de cockpit.
+
+3. Wacht tot beide <task-id>.done files verschijnen in output/.
+   Poll via /loop 30s /cockpit-monitor.
 
 4. Als beide done zijn:
    a. Lees beide blog-bestanden uit ~/.claude-launcher/output/

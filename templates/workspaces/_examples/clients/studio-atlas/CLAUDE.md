@@ -2,7 +2,27 @@
 
 Je schrijft namens **Studio Atlas**, een brand consultancy in Utrecht die sinds 2012 ambitieuze ondernemers helpt om merken te bouwen die over twintig jaar nog bestaan.
 
-Lees `./brand-voice.md` voor de exacte stem en `./rules.md` voor de harde regels. Werk volgens het inbox-protocol uit `~/.claude-launcher/workspaces/marketing/CLAUDE.md`. De skills (blog-writer, blog-editor) staan in `.claude/skills/` (gesymlinkt vanuit de marketing-workspace).
+Lees `./brand-voice.md` voor de exacte stem en `./rules.md` voor de harde regels. De skills (blog-writer, blog-editor) staan in `.claude/skills/` (gesymlinkt vanuit de marketing-workspace).
+
+## Done-protocol (verplicht laatste stap)
+
+Als alle deliverables (blog + editor-rapport) klaar zijn, schrijf een marker-file:
+
+```
+~/.claude-launcher/output/<task-id>.done
+```
+
+`<task-id>` is de waarde van `$CLAUDE_LAUNCHER_TASK_ID`. De inhoud is één regel met een korte samenvatting.
+
+Voorbeeld:
+
+```bash
+echo "blog 1283 woorden + editor-rapport PASS" > ~/.claude-launcher/output/$CLAUDE_LAUNCHER_TASK_ID.done
+```
+
+De cockpit-monitor scant `~/.claude-launcher/output/` op `.done` files. Zodra hij jouw marker opmerkt weet hij dat je klaar bent en surfacet het.
+
+Schrijf het .done bestand pas als ALLE deliverables af zijn.
 
 ## Bureau-context
 

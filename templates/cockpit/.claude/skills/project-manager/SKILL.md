@@ -37,10 +37,23 @@ Dit is de standaard-skill voor de cockpit. Andere skills (`cockpit-dispatch`, `c
 
 Lees `~/.claude-launcher/cockpit/routes.yaml`. Match de user-instructie tegen `intent_keywords`. Bij geen match: stel een verhelderingsvraag.
 
-Genereer een task-id (`<skill-prefix>-<YYYY-MM-DD>-<topic>`) en herschrijf de prompt zoals beschreven in `cockpit-dispatch`. Spawn:
+Genereer een task-id (`<skill-prefix>-<YYYY-MM-DD>-<topic>`) en herschrijf de prompt zoals beschreven in `cockpit-dispatch`.
+
+**Verplicht in elke herschreven prompt** — voeg dit blok toe (of een variant met dezelfde substance):
+
+```
+Als je klaar bent met alle deliverables: schrijf als laatste actie
+  echo "<korte samenvatting>" > ~/.claude-launcher/output/$CLAUDE_LAUNCHER_TASK_ID.done
+
+Dat .done bestand is hoe de cockpit weet dat jij klaar bent.
+```
+
+Zonder dit blok kan de worker vergeten het marker-bestand te schrijven en blijft de cockpit op hem wachten. Dit is geen suggestie — voeg het toe aan ELKE injected prompt.
+
+Spawn:
 
 ```bash
-cockpit launch <task-id> --workspace <ws> --inject "<prompt>"
+cockpit launch <task-id> --workspace <ws> --inject "<prompt met done-instructie>"
 ```
 
 ### 2. Bevestiging aan gebruiker
@@ -49,23 +62,29 @@ Eén zin, geen lange uitleg:
 
 > "Werker `<task-id>` draait in workspace `<ws>`. Ik blijf de inbox in de gaten houden en meld zodra hij iets terugzegt."
 
-### 3. Automatische monitor-loop
+### 3. Done-signaal: file-watch op `~/.claude-launcher/output/`
 
-Direct na dispatch (geen wachten op de gebruiker). Drie routes, in volgorde van voorkeur:
+Workers signaleren "klaar" door het bestand `~/.claude-launcher/output/<task-id>.done` te schrijven. Dat is het **primaire mechanisme** — eenvoudig, betrouwbaar, geen subprocess-keten nodig. De client-CLAUDE.md instrueert workers expliciet om deze marker te schrijven als laatste actie.
 
-- **Optie A (DEFAULT, gebruik dit): Monitor skill, event-driven.** Invoke `Monitor` met file-watch op `~/.claude-launcher/inbox/*.ndjson` (alle inbox-bestanden tegelijk), filterend op events van type `question`, `deliver`, `done`, of `error`. Direct getriggerd bij elke nieuwe regel, geen polling-cycles, geen cache-misses, geen 60s-latency op questions.
+Jouw monitor-flow:
 
-  **Verplichte parameters om de macOS race-conditie te voorkomen:**
+1. Lees `~/.claude-launcher/manifest.json` voor de lijst actieve task-ids
+2. Poll `~/.claude-launcher/output/` periodiek (`/loop 30s /cockpit-monitor` of een Monitor skill met file-watch)
+3. Voor elke task-id check: bestaat `~/.claude-launcher/output/<task-id>.done`?
+4. Bij elke nieuwe `.done` die je ziet: surface "task X klaar" met de inhoud van het .done-bestand als samenvatting
+5. Wanneer **alle** active task-ids een .done hebben: alle workers zijn klaar, start de comparison-step (zie `docs/DEMO-PROMPT.md`)
 
-  - `cockpit launch` pre-creëert de inbox-file vóór de tmux-spawn (sinds commit `da22bac`+), dus het bestand bestaat al wanneer Monitor armt. Geen extra wait nodig in normale flow.
-  - Gebruik `tail -F -n +1` (NIET `-n 0`). De `-n +1` zorgt dat tail vanaf regel 1 leest plus blijft volgen — zodat events die tussen file-create en watch-attach binnenkwamen alsnog gezien worden.
-  - Bij defensieve werk: voeg `until [ -f "$inbox" ]; do sleep 0.2; done` toe vóór de tail-call. Hoort niet nodig te zijn maar maakt de pipeline immuun voor toekomstige veranderingen.
+Implementatie-opties voor de polling:
 
-- **Optie B (fallback): `/loop 60s /cockpit-monitor`.** Recurring poll elke 60 seconden van de cockpit-monitor skill. Die skill leest de hele inbox en tracked welke events al gezien zijn. Werkt altijd, maar geeft tot 60s latency op `question`-events (worker zit dan te wachten). Acceptabel voor blog-werk (taken van 3-5 min), irritant voor interactieve flows. **Tijdseenheid is verplicht** — `30s`, `60s`, `1m`, `2m`. Een naakte `/loop 30` zonder unit valt terug naar dynamic mode.
+- **`/loop 30s /cockpit-monitor`** (default, simpel en betrouwbaar). Tijdseenheid is verplicht. NOOIT `/loop 30` zonder unit.
+- **Monitor skill** met `ls ~/.claude-launcher/output/*.done 2>/dev/null` als check-command — event-driven file-watch.
+- **Bash polling** binnen je huidige turn als laatste redmiddel.
 
-- **Optie C (noodgreep): in-turn bash-sleep loop.** Houdt je turn 10 min open, blokkeert parallelle dispatches. Alleen als A en B beide falen.
+### 4. Inbox NDJSON: secundair, optioneel
 
-**Standaard = optie A.** Bij twijfel of als Monitor in jouw harness niet beschikbaar is: optie B is de robuuste fallback.
+Workers kunnen ook `cockpit msg status/question/deliver/error` aanroepen voor granulaire updates of vragen. Dat schrijft naar `~/.claude-launcher/inbox/<task-id>.ndjson`. Lees die file als hij bestaat — interessante events (question, error blocking=true) surface je direct.
+
+Maar **vertrouw niet op inbox-events voor done-detectie** — workers kunnen het vergeten. De .done file is de bron van waarheid voor "klaar".
 
 ### 4. Event-surfacing per worker-event
 
