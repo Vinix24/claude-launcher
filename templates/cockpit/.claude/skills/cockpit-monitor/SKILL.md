@@ -2,15 +2,15 @@
 name: cockpit-monitor
 description: >
   Poll all active worker inboxes and surface the events that need operator attention
-  (questions, done, errors). Use either manually after spawning a worker, or
-  automatically via Monitor (event-driven) or /loop 1m /cockpit-monitor (poll).
+  (questions, deliver, done, errors). Designed to be invoked every 60 seconds via
+  /loop 60s /cockpit-monitor, or manually after spawning a worker.
 ---
 
 # cockpit-monitor
 
 Lees alle inbox-NDJSON-bestanden van actieve workers en surface relevante events naar de gebruiker.
 
-## Stappen
+## Stappen per tick
 
 ### 1. Lijst actieve workers
 
@@ -20,22 +20,34 @@ cockpit status
 
 Geeft per worker: task-id, workspace, started-at, aantal events in inbox.
 
-### 2. Voor elke worker met nieuwe events
+### 2. Lees ELKE inbox volledig
 
-Lees `~/.claude-launcher/inbox/<task-id>.ndjson`. Track per session welke events je al hebt gezien (bv. een teller in je werkgeheugen) zodat je niet dezelfde events herhaaldelijk surfaced.
+Voor elk task-id uit de manifest, lees `~/.claude-launcher/inbox/<task-id>.ndjson` van regel 1 tot het einde. Niet tail, niet `-F`, niet alleen-nieuwe-regels. Het hele bestand.
 
-### 3. Surface op basis van event-type
+```bash
+cat ~/.claude-launcher/inbox/<task-id>.ndjson
+```
+
+### 3. Track wat je al hebt gezien
+
+Houd een mentale teller bij per task-id: hoeveel regels van die inbox heb je deze sessie al gesurfaced? Dat is jouw "seen-count". Surface alleen regels met index > seen-count. Update de teller na surfacen.
+
+Voorbeeld: tick 1 leest 3 regels (status, status, question) → surface alle 3, seen-count = 3. Tick 2 leest 5 regels → surface alleen regel 4 en 5, seen-count = 5.
+
+Als je geen geheugen meer hebt van vorige ticks (cold start na compaction), surface alleen `done` / `error blocking=true` / `question` regels — dat zijn de altijd-relevant types die nooit te laat zijn om te tonen.
+
+### 4. Surface op basis van event-type
 
 | Event-type | Actie |
 |---|---|
-| `status` | Stil houden tenzij milestone (outline, draft, klaar voor review) |
-| `question` | **Direct surfacen**, vraag de gebruiker om antwoord, dan `cockpit msg ...` of doorgeven aan worker via een nieuwe spawn met de answer |
-| `deliver` | Surface "artefact klaar: <pad>". Vraag of de gebruiker hem wil zien / openen |
-| `done` | Surface "task `<task-id>` klaar: <samenvatting>". Vraag vervolgactie (open / edit / nog een output-format / kill) |
+| `status` | Stil houden tenzij milestone (outline, draft 80%, klaar voor review) |
+| `question` | **Direct surfacen**, vraag de gebruiker om antwoord, paste antwoord door naar worker via een nieuwe instructie |
+| `deliver` | Surface "artefact klaar: `<pad>`". Vraag of de gebruiker hem wil zien / openen / converteren |
+| `done` | Surface "task `<task-id>` klaar: `<samenvatting>`". Vraag vervolgactie |
 | `error blocking=true` | **Direct surfacen**, escaleer naar gebruiker |
 | `error blocking=false` | Log + status, tenzij meerdere errors in dezelfde worker |
 
-### 4. Maak het kort
+### 5. Maak het kort
 
 Eén regel per event in surface. Niet de hele NDJSON terugparaderen.
 
@@ -47,26 +59,25 @@ Voorbeeld:
 [blog-2026-05-20] deliver: output/2026-05-20-ai-mkb.md (1.247 woorden)
 ```
 
-### 5. Wachtpatroon
+### 6. Wachtpatroon
 
-Als geen events: meld dat niet expliciet (geen spam). Wacht op de volgende loop-iteratie.
-
-## Inbox-cleanup (geen v0.0)
-
-Niet automatisch wissen — laat events staan voor de geschiedenis. v0.5+ kan een retention-config krijgen.
+Als er geen nieuwe events zijn: meld dat niet expliciet. Geen "ik blijf kijken, nog niets". Stilte is de juiste output, je wordt over 60s opnieuw aangeroepen door de /loop.
 
 ## Activatie
 
-Twee routes, in volgorde van voorkeur:
+Default route is `/loop 60s /cockpit-monitor` — `project-manager` zet deze automatisch op direct na een dispatch.
 
-**Event-driven (aanbevolen)**: gebruik de `Monitor` skill met file-watch op `~/.claude-launcher/inbox/*.ndjson` filterend op events van type `question`, `deliver`, `done`, of `error`. Direct getriggerd op een nieuwe regel.
+**Tijdseenheid is verplicht** in /loop. Geldig: `30s`, `60s`, `1m`, `2m`, `5m`. NOOIT `/loop 30` of `/loop 60` zonder unit — dat valt naar dynamic mode en werkt niet.
 
-**Polling-fallback**: `/loop 1m /cockpit-monitor` (met **expliciete tijdseenheid** — `30s`, `1m`, `2m`, `5m`). NOOIT `/loop 60` zonder unit, dat valt naar dynamic mode. Stop met `/loop stop`.
+Stoppen: `/loop stop`. Project-manager doet dit automatisch zodra alle actieve workers `done` hebben gerapporteerd en de gebruiker een vervolgactie heeft gekozen.
 
-`project-manager` skill kiest standaard route A (Monitor); deze skill werkt onder beide.
+## Inbox-cleanup (geen v0.0)
+
+Niet automatisch wissen. Laat events staan voor de geschiedenis. v0.5+ kan een retention-config krijgen.
 
 ## Wat NIET doen
 
-- Niet zelf antwoorden op `question`-events. Vraag de gebruiker.
+- Niet zelf antwoorden op `question`-events. Vraag altijd de gebruiker.
 - Niet workers killen op basis van events alleen. Vraag bevestiging.
-- Niet de inbox roteren of opschonen in v0.0.
+- Niet de inbox roteren of opschonen.
+- Niet tail of file-watch gebruiken (race-condities op macOS). Lees elke tick het hele bestand.

@@ -51,22 +51,15 @@ Eén zin, geen lange uitleg:
 
 ### 3. Automatische monitor-loop
 
-Direct na dispatch (geen wachten op de gebruiker). Drie routes, in volgorde van voorkeur:
+Direct na dispatch (geen wachten op de gebruiker). Drie routes:
 
-- **Optie A (aanbevolen): Monitor skill.** Invoke de `Monitor` skill met file-watch op `~/.claude-launcher/inbox/<task-id>.ndjson` (of `~/.claude-launcher/inbox/*.ndjson` als meerdere workers draaien). Filter op events van type `question`, `deliver`, `done`, of `error`. Dit is **event-driven**: je wordt direct getriggerd op een nieuwe regel, geen polling-cycles, geen cache-misses.
+- **Optie A (DEFAULT, gebruik dit): `/loop 60s /cockpit-monitor`.** Recurring poll elke 60 seconden van de cockpit-monitor skill. Die skill leest de hele inbox en tracked welke events al gezien zijn — mist nooit iets. **Tijdseenheid is verplicht** (`30s`, `60s`, `1m`, `2m`). Een naakte `/loop 30` zonder unit valt terug naar dynamic mode en werkt niet zoals verwacht. Voor blog-werk: `60s` is de sweet spot (snel genoeg om binnen één blog-iteratie te updaten, niet zo agressief dat je LLM-cycles verspilt op idle ticks).
 
-- **Optie B (cron-loop): /loop met EXPLICIETE tijdseenheid.** Als Monitor niet beschikbaar is, invoke `/loop 1m /cockpit-monitor` (een minuut). **NOOIT `/loop 30` zonder unit** — dat valt terug naar dynamic mode. Geldige units: `30s`, `1m`, `2m`, `5m`. Default 1m voor blog-werk, 30s voor korte taken.
+- **Optie B (advanced, alleen voor power-users): Monitor skill.** Event-driven file-watch via `Monitor` skill op `~/.claude-launcher/inbox/*.ndjson`. **Pas op**: op macOS heeft `tail -F` een race-conditie tussen file-creation en watch-attach. Als de worker zijn eerste events schrijft vóór Monitor klaar staat met watchen, mis je die regels. Workaround: invoke Monitor pas NA `sleep 15` zodat de inbox al events bevat, of gebruik `tail -n +1 -F` (lees alles + follow) in plaats van `-n 0`. Liever optie A.
 
-- **Optie C (in-turn polling): bash-sleep loop.** Laatste fallback. Voer zelf polling uit binnen je huidige turn:
-  ```bash
-  for i in $(seq 1 20); do
-    sleep 30
-    tail -n +"$seen" ~/.claude-launcher/inbox/<task-id>.ndjson
-  done
-  ```
-  Houdt jouw turn 10 minuten open, niet ideaal voor parallelle werkers.
+- **Optie C (in-turn polling, noodgreep):** bash-sleep loop binnen je huidige turn. Houdt je turn 10 min open, blokkeert parallelle dispatches. Alleen als A en B beide falen.
 
-**Default = optie A.** Schakel terug naar B alleen als Monitor faalt of niet beschikbaar is. C is noodgreep.
+**Standaard = optie A.** Geen verleiding om Monitor te gebruiken "omdat het sneller is", op de huidige stack geeft het meer problemen dan het oplost.
 
 ### 4. Event-surfacing per worker-event
 
@@ -138,8 +131,8 @@ PM (intern):
 PM (naar gebruiker, één regel):
   "Werker linkedin-2026-05-20-solopreneur-productiviteit draait. Ik volg de inbox."
 
-PM (invoke Monitor skill, event-driven):
-  Monitor(filter: question/deliver/done/error in inbox/*.ndjson)
+PM (start recurring poll):
+  /loop 60s /cockpit-monitor
 
 PM (na 1 min, nieuw event):
   "[linkedin-2026-05-20-solopreneur-productiviteit] status: brand-voice gelezen, hook gekozen"
