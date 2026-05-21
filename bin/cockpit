@@ -154,12 +154,25 @@ cmd_start() {
   echo "cockpit: nieuwe sessie '$SESSION_NAME' in $COCKPIT_DIR"
   [ "$require_perms" -eq 0 ] && echo "  auto-approve tools: aan" || echo "  auto-approve tools: uit"
 
-  # Maak detached sessie aan, window 0 = cockpit-Claude
-  tmux new-session -d -s "$SESSION_NAME" -n "cockpit" -c "$COCKPIT_DIR" -x 220 -y 50
+  # Maak detached sessie, één window met één pane voor de cockpit-Claude.
+  # Workers worden later toegevoegd als PANES rechts via split-window + main-vertical.
+  tmux new-session -d -s "$SESSION_NAME" -n "launcher" -c "$COCKPIT_DIR" -x 220 -y 50
+
+  # Pane-labels zichtbaar in de border (top). We gebruiken een user-option @name
+  # ipv pane_title omdat pane_title door Claude Code wordt overschreven met
+  # zijn eigen titel ('✳ Claude Code'). @name is persistent.
+  # Inspired by smux's tmux.conf.
+  tmux set-option -t "$SESSION_NAME" pane-border-status top
+  tmux set-option -t "$SESSION_NAME" pane-border-format ' #{?@name,#{@name},#{pane_title}} '
+
+  # Label de eerste pane als 'cockpit' via @name
+  tmux set-option -p -t "$SESSION_NAME:.0" @name "cockpit"
+
+  # Start Claude in pane 0
   if [ -d "$VENV_BIN_DIR" ]; then
-    tmux send-keys -t "$SESSION_NAME:cockpit" "export PATH=\"$VENV_BIN_DIR:\$PATH\"" Enter
+    tmux send-keys -t "$SESSION_NAME:.0" "export PATH=\"$VENV_BIN_DIR:\$PATH\"" Enter
   fi
-  tmux send-keys -t "$SESSION_NAME:cockpit" "$claude_cmd" Enter
+  tmux send-keys -t "$SESSION_NAME:.0" "$claude_cmd" Enter
 
   # Attach — exec zodat de user volledig in de sessie zit
   exec tmux attach-session -t "$SESSION_NAME"
@@ -201,44 +214,54 @@ cmd_launch() {
   : > "$INBOX_DIR/$task_id.ndjson"
 
   # Hoofdmodus: cockpit-sessie bestaat (cockpit start is gedaan).
-  # Maak een nieuwe window in dezelfde sessie, geen nieuw desktop-venster.
-  # Inspired by smux: alles in één tmux-sessie houdt het overzichtelijk.
+  # Workers worden PANES rechts van de cockpit via split-window + main-vertical
+  # layout. Inspired by smux: cockpit links, alle workers stacken rechts.
   if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    # Conflict-check: window met deze naam mag niet al bestaan
-    if tmux list-windows -t "$SESSION_NAME" -F '#W' 2>/dev/null | grep -qx "$task_id"; then
-      die "window '$task_id' bestaat al in sessie '$SESSION_NAME'. Kies andere task-id of: cockpit kill $task_id"
+    # Conflict-check: geen pane met deze @name mag al bestaan
+    if tmux list-panes -s -t "$SESSION_NAME" -F '#{@name}' 2>/dev/null | grep -qx "$task_id"; then
+      die "pane '$task_id' bestaat al in sessie '$SESSION_NAME'. Kies andere task-id of: cockpit kill $task_id"
     fi
 
-    echo "1/4  nieuwe window '$task_id' in sessie '$SESSION_NAME'"
-    tmux new-window -t "$SESSION_NAME:" -n "$task_id" -c "$ws_dir"
-    local target="$SESSION_NAME:$task_id"
+    echo "1/4  split nieuwe pane '$task_id' rechts in sessie '$SESSION_NAME'"
+    # -h: horizontal split (nieuwe pane rechts van current); -P: print pane-id; -F: format
+    # -t :launcher targeting de cockpit-window zodat we daar splitten, niet ergens anders
+    local pane_id
+    pane_id="$(tmux split-window -h -t "$SESSION_NAME:" -c "$ws_dir" -P -F '#{pane_id}')"
+    [ -n "$pane_id" ] || die "split-window faalde"
 
-    echo "2/4  exporteer CLAUDE_LAUNCHER_TASK_ID en start Claude"
-    tmux send-keys -t "$target" "export CLAUDE_LAUNCHER_TASK_ID=$task_id" Enter
-    tmux send-keys -t "$target" "export CLAUDE_LAUNCHER_HOME=$LAUNCHER_HOME" Enter
+    # Label de nieuwe pane via @name (persistent, niet override-baar door Claude)
+    tmux set-option -p -t "$pane_id" @name "$task_id"
+
+    # main-vertical: cockpit (eerste pane) links groot, workers stacken rechts.
+    # Mocht je liever even-horizontal of tiled willen: pas hier aan.
+    tmux select-layout -t "$SESSION_NAME:" main-vertical 2>/dev/null || true
+
+    echo "2/4  exporteer CLAUDE_LAUNCHER_TASK_ID en start Claude in pane $pane_id"
+    tmux send-keys -t "$pane_id" "export CLAUDE_LAUNCHER_TASK_ID=$task_id" Enter
+    tmux send-keys -t "$pane_id" "export CLAUDE_LAUNCHER_HOME=$LAUNCHER_HOME" Enter
     if [ -d "$VENV_BIN_DIR" ]; then
-      tmux send-keys -t "$target" "export PATH=\"$VENV_BIN_DIR:\$PATH\"" Enter
+      tmux send-keys -t "$pane_id" "export PATH=\"$VENV_BIN_DIR:\$PATH\"" Enter
     fi
-    tmux send-keys -t "$target" "$claude_cmd" Enter
+    tmux send-keys -t "$pane_id" "$claude_cmd" Enter
 
     echo "3/4  wacht ${wait_seconds}s op Claude startup"
     sleep "$wait_seconds"
 
-    echo "4/4  inject prompt in window '$task_id'"
+    echo "4/4  inject prompt in pane '$task_id'"
     local tmp_prompt
     tmp_prompt="$(mktemp -t cockpit-prompt-XXXX)"
     printf '%s' "$prompt" > "$tmp_prompt"
     tmux load-buffer "$tmp_prompt"
-    tmux paste-buffer -t "$target"
+    tmux paste-buffer -t "$pane_id"
     sleep 0.4
-    tmux send-keys -t "$target" Enter
+    tmux send-keys -t "$pane_id" Enter
     rm -f "$tmp_prompt"
 
     update_manifest "$task_id" "$workspace"
 
-    echo "OK: worker '$task_id' draait als window in sessie '$SESSION_NAME'"
+    echo "OK: worker '$task_id' draait als pane in sessie '$SESSION_NAME'"
     echo "    inbox: $INBOX_DIR/$task_id.ndjson"
-    echo "    switch: Ctrl-B + window-nummer, of: cockpit attach $task_id"
+    echo "    navigatie: Ctrl-B + pijl voor pane-switch, of: cockpit attach $task_id"
     return 0
   fi
 
@@ -293,7 +316,7 @@ cmd_launch() {
   fi
 
   echo "  tip: voor de schoonste ervaring start eerst 'cockpit start',"
-  echo "       dan worden volgende launches windows in dezelfde sessie"
+  echo "       dan worden volgende launches panes naast de cockpit"
 }
 
 cmd_status() {
@@ -304,8 +327,15 @@ cmd_status() {
     return 0
   fi
 
-  echo "actieve workers:"
-  printf "  %-20s  %-15s  %-25s  %s\n" "TASK-ID" "WORKSPACE" "STARTED" "INBOX"
+  # Toon cockpit-sessie panes als er een claude-launcher actief is
+  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "sessie '$SESSION_NAME':"
+    tmux list-panes -s -t "$SESSION_NAME" -F '  pane #{pane_index}: #{?@name,#{@name},#{pane_title}}  (#{pane_current_command})' 2>/dev/null
+    echo
+  fi
+
+  echo "actieve workers (uit manifest):"
+  printf "  %-35s  %-25s  %-25s  %s\n" "TASK-ID" "WORKSPACE" "STARTED" "INBOX"
   if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_FILE" ]; then
     python3 - "$MANIFEST_FILE" "$INBOX_DIR" <<'PY'
 import json, os, sys
@@ -316,7 +346,7 @@ for w in data.get("workers", []):
     n = 0
     if os.path.exists(inbox):
         with open(inbox) as fh: n = sum(1 for _ in fh)
-    print(f"  {w['task_id']:<20}  {w['workspace']:<15}  {w['started_at']:<25}  {n} events")
+    print(f"  {w['task_id']:<35}  {w['workspace']:<25}  {w['started_at']:<25}  {n} events")
 PY
   fi
 }
@@ -325,41 +355,52 @@ cmd_attach() {
   [ $# -ge 1 ] || die "usage: cockpit attach <task-id>"
   local task_id="$1"
 
-  # Hoofdmodus: task-id is een window in de cockpit-sessie
+  # Hoofdmodus: task-id is een pane (gelabeld via @name) in de cockpit-sessie
   if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    if tmux list-windows -t "$SESSION_NAME" -F '#W' 2>/dev/null | grep -qx "$task_id"; then
-      # Als we al binnen tmux zitten, gewoon select-window
+    local pane_id
+    pane_id="$(tmux list-panes -s -t "$SESSION_NAME" -F '#{pane_id} #{@name}' 2>/dev/null \
+               | awk -v t="$task_id" '$2==t {print $1; exit}')"
+    if [ -n "$pane_id" ]; then
+      # Al binnen tmux: select-pane direct
       if [ -n "${TMUX:-}" ]; then
-        exec tmux select-window -t "$SESSION_NAME:$task_id"
+        exec tmux select-pane -t "$pane_id"
       fi
-      # Anders: attach session en switch direct naar de juiste window
-      exec tmux attach -t "$SESSION_NAME" \; select-window -t "$SESSION_NAME:$task_id"
+      # Anders attach + select-pane
+      exec tmux attach -t "$SESSION_NAME" \; select-pane -t "$pane_id"
     fi
   fi
 
-  # Fallback: task-id is een losse sessie
+  # Fallback: task-id is een losse sessie (oude pad)
   if tmux has-session -t "$task_id" 2>/dev/null; then
     exec tmux attach -t "$task_id"
   fi
 
-  die "geen window of sessie gevonden voor '$task_id'"
+  die "geen pane of sessie gevonden voor '$task_id'"
 }
 
 cmd_kill() {
   ensure_dirs
   [ $# -ge 1 ] || die "usage: cockpit kill <task-id> | --all"
 
-  # Kill een specifieke worker: eerst kijken of het een window in de cockpit-sessie is,
+  # Kill een specifieke worker: eerst kijken of het een pane in de cockpit-sessie is,
   # anders fallback op losse sessie.
   kill_one() {
     local tid="$1"
-    if tmux has-session -t "$SESSION_NAME" 2>/dev/null && \
-       tmux list-windows -t "$SESSION_NAME" -F '#W' 2>/dev/null | grep -qx "$tid"; then
-      tmux kill-window -t "$SESSION_NAME:$tid" 2>/dev/null && echo "killed window: $tid"
-    elif tmux has-session -t "$tid" 2>/dev/null; then
+    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+      local pane_id
+      pane_id="$(tmux list-panes -s -t "$SESSION_NAME" -F '#{pane_id} #{@name}' 2>/dev/null \
+                 | awk -v t="$tid" '$2==t {print $1; exit}')"
+      if [ -n "$pane_id" ]; then
+        tmux kill-pane -t "$pane_id" 2>/dev/null && echo "killed pane: $tid"
+        # Re-tile zodat overgebleven panes zich herverdelen
+        tmux select-layout -t "$SESSION_NAME:" main-vertical 2>/dev/null || true
+        return
+      fi
+    fi
+    if tmux has-session -t "$tid" 2>/dev/null; then
       tmux kill-session -t "$tid" 2>/dev/null && echo "killed session: $tid"
     else
-      echo "(geen window of sessie '$tid' actief)"
+      echo "(geen pane of sessie '$tid' actief)"
     fi
   }
 
