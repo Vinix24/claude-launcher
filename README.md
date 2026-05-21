@@ -104,7 +104,49 @@ Het script vraagt om bevestiging bij elke installatie-stap. Niets wordt geforcee
 
 Dezelfde prompt naar beide spawnen → twee compleet andere blogs. Niet door slimme prompting, door eigen `CLAUDE.md` + `brand-voice.md` + `rules.md` per workspace.
 
-Volledige copy-paste prompt en uitleg in **[docs/DEMO-PROMPT.md](docs/DEMO-PROMPT.md)**. De prompt eindigt met een automatische vergelijkings-stap die het verschil expliciet maakt.
+Start `cockpit start` en plak deze prompt:
+
+```
+Draai de parallel-clients demo:
+
+1. Spawn twee blog-workers gelijktijdig, een per demo-client:
+   - workspace clients/growthlab
+   - workspace clients/studio-atlas
+
+   Identieke prompt voor beide (woord-voor-woord hetzelfde, geen
+   client-specifieke hints):
+
+   "Schrijf een supporting article van 1000-1500 woorden over
+    'de toekomst van marketing', primair keyword 'toekomst marketing',
+    FAQ-sectie aan het eind. Roep de blog-editor aan voor publicatie.
+    Sla op in $CLAUDE_LAUNCHER_HOME/output/."
+
+2. Geen --headless. Ik wil beide iTerm-vensters zien opengaan.
+
+3. Wacht tot beide workers 'done' rapporteren via de inbox.
+
+4. Als beide done zijn:
+   a. Lees beide blog-bestanden uit ~/.claude-launcher/output/
+   b. Maak een side-by-side vergelijking met aandacht voor:
+      - Openingszin (hook-stijl en lengte)
+      - Woordkeus en jargon-gebruik
+      - Zinsritme en alinea-lengte
+      - Authority-punten die elke client heeft gebruikt
+      - Gebruik van em-dashes, vraagtekens, uitroeptekens
+      - Stijl van de CTA aan het eind
+      - Concrete passages die de tegenstelling het sterkst tonen
+   c. Print de conclusie hier in de cockpit onder de kop
+      "## Demo-conclusie: zelfde prompt, andere wereld"
+   d. Sla de vergelijking op in
+      $CLAUDE_LAUNCHER_HOME/output/YYYY-MM-DD-demo-vergelijking.md
+
+5. Lever drie artefacten op: blog GrowthLab, blog Studio Atlas,
+   vergelijkings-rapport. Vraag of ik ze wil openen.
+```
+
+Verwacht resultaat: twee iTerm-vensters openen met workers, na 4-7 minuten zie je de demo-conclusie in je cockpit-terminal. Drie deliverables in `~/.claude-launcher/output/`.
+
+Volledige uitleg, varianten en troubleshooting in **[docs/DEMO-PROMPT.md](docs/DEMO-PROMPT.md)**.
 
 ## CLI-overzicht
 
