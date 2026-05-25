@@ -32,6 +32,11 @@ VENV_BIN_DIR="$LAUNCHER_HOME/.venv/bin"
 # Inspired by smux (github.com/ShawnPana/smux) — single-session, no desktop clutter.
 SESSION_NAME="claude-launcher"
 
+# Default cockpit-pane breedte. Percentage zorgt dat de cockpit relatief constant
+# blijft bij meer workers of een resize. Configureerbaar via env var:
+#   COCKPIT_MAIN_WIDTH=70% cockpit start
+MAIN_PANE_WIDTH="${COCKPIT_MAIN_WIDTH:-60%}"
+
 # Resolve which python to use. Prefer the launcher venv (with python-docx,
 # python-pptx, pyyaml installed by install.sh), else fall back to system python3.
 launcher_python() {
@@ -165,6 +170,10 @@ cmd_start() {
   tmux set-option -t "$SESSION_NAME" pane-border-status top
   tmux set-option -t "$SESSION_NAME" pane-border-format ' #{?@name,#{@name},#{pane_title}} '
 
+  # Cockpit-pane krijgt vaste breedte (default 60%, env: COCKPIT_MAIN_WIDTH).
+  # main-vertical layout gebruikt main-pane-width voor de hoofdpane (links).
+  tmux set-window-option -t "$SESSION_NAME" main-pane-width "$MAIN_PANE_WIDTH" 2>/dev/null || true
+
   # Label de eerste pane als 'cockpit' via @name
   tmux set-option -p -t "$SESSION_NAME:.0" @name "cockpit"
 
@@ -246,7 +255,9 @@ Dat .done-bestand is hoe de cockpit weet dat jij klaar bent. Sla deze stap niet 
     tmux set-option -p -t "$pane_id" @name "$task_id"
 
     # main-vertical: cockpit (eerste pane) links groot, workers stacken rechts.
-    # Mocht je liever even-horizontal of tiled willen: pas hier aan.
+    # Re-apply main-pane-width voor het geval de user de terminal resizede sinds
+    # cockpit start, of voor een nieuwe sessie zonder eerder gezette option.
+    tmux set-window-option -t "$SESSION_NAME" main-pane-width "$MAIN_PANE_WIDTH" 2>/dev/null || true
     tmux select-layout -t "$SESSION_NAME:" main-vertical 2>/dev/null || true
 
     echo "2/4  exporteer CLAUDE_LAUNCHER_TASK_ID en start Claude in pane $pane_id"
@@ -405,7 +416,8 @@ cmd_kill() {
                  | awk -v t="$tid" '$2==t {print $1; exit}')"
       if [ -n "$pane_id" ]; then
         tmux kill-pane -t "$pane_id" 2>/dev/null && echo "killed pane: $tid"
-        # Re-tile zodat overgebleven panes zich herverdelen
+        # Re-tile zodat overgebleven panes zich herverdelen (cockpit blijft op MAIN_PANE_WIDTH)
+        tmux set-window-option -t "$SESSION_NAME" main-pane-width "$MAIN_PANE_WIDTH" 2>/dev/null || true
         tmux select-layout -t "$SESSION_NAME:" main-vertical 2>/dev/null || true
         return
       fi
@@ -458,6 +470,17 @@ cmd_msg() {
   CLAUDE_LAUNCHER_HOME="$LAUNCHER_HOME" exec "$py" "$msg_script" "$@"
 }
 
+cmd_reflow() {
+  # Herstel de main-vertical layout met cockpit op MAIN_PANE_WIDTH.
+  # Handig na een terminal-resize of als de panes scheef staan.
+  tmux has-session -t "$SESSION_NAME" 2>/dev/null \
+    || die "geen actieve sessie '$SESSION_NAME'"
+
+  tmux set-window-option -t "$SESSION_NAME" main-pane-width "$MAIN_PANE_WIDTH" 2>/dev/null
+  tmux select-layout -t "$SESSION_NAME:" main-vertical
+  echo "reflow: cockpit $MAIN_PANE_WIDTH, workers main-vertical"
+}
+
 usage() {
   cat <<'EOF'
 cockpit — claude-launcher CLI
@@ -469,6 +492,7 @@ Commands:
   status                                           list active workers
   attach <task-id>                                 attach to worker tmux
   kill <task-id> | --all                           kill worker(s)
+  reflow                                           reset layout (main-vertical, cockpit op COCKPIT_MAIN_WIDTH)
   msg <type> [options]                             worker-side inbox event
   help                                             this message
 
@@ -477,9 +501,11 @@ Defaults:
   --dangerously-skip-permissions (Claude vraagt geen tool-toestemming).
   Voeg --require-permissions toe om de prompts terug te zetten.
 
-  launch opent standaard een nieuw iTerm/Terminal-window met de worker
-  in beeld. Voeg --headless toe als je de worker onzichtbaar in tmux
-  wilt laten draaien (attach later met 'cockpit attach <task-id>').
+  Workers spawnen als panes in de claude-launcher tmux-sessie (geen
+  losse desktop-vensters). Cockpit-pane krijgt vaste breedte (default
+  60%), override via env: COCKPIT_MAIN_WIDTH=70% cockpit start.
+  Voeg --headless toe als je de worker onzichtbaar wilt (attach later
+  met 'cockpit attach <task-id>').
 
 Worker-side msg commands:
   cockpit msg status "<text>"
@@ -502,6 +528,7 @@ main() {
     status)  cmd_status "$@" ;;
     attach)  cmd_attach "$@" ;;
     kill)    cmd_kill "$@" ;;
+    reflow)  cmd_reflow "$@" ;;
     msg)     cmd_msg "$@" ;;
     help|-h|--help) usage ;;
     *) die "onbekend command: $subcmd (zie: cockpit help)" 2 ;;
